@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jlink" name="MarkdownExtractor">
+    <output-path>$PROJECT_DIR$/out/artifacts/MarkdownExtractor</output-path>
+    <root id="root">
+      <element id="module-output" name="Markdown-Extractor" />
+    </root>
+  </artifact>
+</component>
