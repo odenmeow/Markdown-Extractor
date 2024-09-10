@@ -230,23 +230,33 @@ public class MarkdownExtractorGUI extends JFrame {
         }
 
         private void processDirectory(File directory, File markdownFolder, File imagesFolder) throws IOException {
-            File[] files = directory.listFiles((dir, name) -> name.endsWith(".md"));
+            // 遍歷當前資料夾中的所有文件和資料夾
+            File[] files = directory.listFiles();
             if (files != null) {
                 for (File file : files) {
-                    processMarkdownFile(file, markdownFolder, imagesFolder);
+                    if (file.isDirectory()) {
+                        // 如果是子資料夾，僅在 markdownFolder 創建對應的目標資料夾，不再創建 images 資料夾
+                        File newMarkdownFolder = new File(markdownFolder, file.getName());
+                        Files.createDirectories(newMarkdownFolder.toPath());
+                        // 遞迴處理子資料夾，但只傳入相同的 imagesFolder，圖片不再有層次結構
+                        processDirectory(file, newMarkdownFolder, imagesFolder);
+                    } else if (file.getName().endsWith(".md")) {
+                        // 處理當前目錄下的 .md 文件
+                        processMarkdownFile(file, markdownFolder, imagesFolder);
+                    }
                 }
             }
         }
 
         private void processMarkdownFile(File file, File markdownFolder, File imagesFolder) throws IOException {
-            // 複製 .md 檔案到 markdown 資料夾
+            // 複製 .md 檔案到對應的 markdown 資料夾中
             File markdownDestination = new File(markdownFolder, file.getName());
             Files.copy(file.toPath(), markdownDestination.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
             String content = new String(Files.readAllBytes(file.toPath()));
             List<String> missingImages = new ArrayList<>();
 
-            // 使用兩個正則表達式來匹配 Markdown 和 HTML 中的圖片
+            // 使用正則表達式來匹配 Markdown 和 HTML 中的圖片
             Matcher markdownMatcher = MARKDOWN_IMAGE_PATTERN.matcher(content);
             Matcher htmlMatcher = HTML_IMAGE_PATTERN.matcher(content);
 
@@ -269,7 +279,7 @@ public class MarkdownExtractorGUI extends JFrame {
         }
 
         private void processImage(File file, String imageUrl, File imagesFolder, List<String> missingImages) {
-            // 如果圖片是相對路徑，則基於 .md 檔案的位置解析
+            // 圖片是相對路徑時，基於 .md 檔案的位置解析
             File imageFile = new File(file.getParentFile(), imageUrl);
             try {
                 if (!imageFile.isAbsolute()) {
@@ -279,6 +289,7 @@ public class MarkdownExtractorGUI extends JFrame {
                 if (!imageFile.exists()) {
                     missingImages.add(imageUrl);
                 } else {
+                    // 所有圖片都複製到統一的 images 資料夾，不再依據來源目錄
                     String imageName = imageFile.getName();
                     File outputFile = new File(imagesFolder, imageName);
                     copyImage(imageFile, outputFile);
@@ -287,6 +298,7 @@ public class MarkdownExtractorGUI extends JFrame {
                 e.printStackTrace();
             }
         }
+
 
         private void copyImage(File imageFile, File outputFile) {
             try {
