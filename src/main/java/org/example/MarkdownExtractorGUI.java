@@ -29,7 +29,7 @@ public class MarkdownExtractorGUI extends JFrame {
 
     public MarkdownExtractorGUI() {
         setTitle("Markdown Extractor");
-        setSize(600, 400);
+        setSize(650, 400);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
@@ -109,7 +109,6 @@ public class MarkdownExtractorGUI extends JFrame {
                                 // 如果已有一個輸出資料夾，則清空列表，然後添加新的資料夾
                                 if (ioFolderModel.size() > 0) {
                                     ioFolderModel.clear();
-                                    System.out.println("已經除");
                                 }
                                 ioFolderModel.addElement(selectedFile.getAbsolutePath());
                             }
@@ -145,6 +144,7 @@ public class MarkdownExtractorGUI extends JFrame {
             panelGrid1.setBorder(new EmptyBorder(10, 10, 10, 10));
 
             // Input Folder 左邊
+            JPanel inputPanelTitle = new JPanel((new BorderLayout()));
             JPanel inputPanel = new JPanel(new BorderLayout());
             JLabel inputLabel = new JLabel("Input Folders or Markdown Files:");
             inputFolderModel = new DefaultListModel<>();
@@ -152,7 +152,8 @@ public class MarkdownExtractorGUI extends JFrame {
             inputFolderList.setTransferHandler(new FileDropHandler(true,inputFolderModel));  // 支援拖放資料夾或文件
             JScrollPane inputScrollPane = new JScrollPane(inputFolderList);  // 添加 ScrollPane 以支持多個來源
 
-            inputPanel.add(inputLabel, BorderLayout.NORTH);
+            inputPanelTitle.add(inputLabel, BorderLayout.WEST);
+            inputPanel.add(inputPanelTitle, BorderLayout.NORTH);
             inputPanel.add(inputScrollPane, BorderLayout.CENTER);
             panelGrid1.add(inputPanel);
 
@@ -184,6 +185,15 @@ public class MarkdownExtractorGUI extends JFrame {
             panelGrid2.add(errorMsgPanel);
             myBasicPanel.add(panelGrid2, BorderLayout.CENTER);
 
+            // 添加清空按鈕來清空使用者丟入的檔案或資料夾
+            JButton clearButton = new JButton("Clear Input");
+            clearButton.addActionListener(e -> {
+                inputFolderModel.clear();  // 清空輸入的檔案或資料夾列表
+                JOptionPane.showMessageDialog(ancestorWindow, "Input files and folders cleared.");
+            });
+
+            // 將 clearButton 添加到界面中的合適位置，例如在 "Process Markdown" 按鈕旁邊
+            inputPanelTitle.add(clearButton, BorderLayout.EAST);
 
             // Mouse click event for the failed files list
             failedFilesList.addMouseListener(new MouseAdapter() {
@@ -416,13 +426,17 @@ public class MarkdownExtractorGUI extends JFrame {
             panelGridMain.setBorder(new EmptyBorder(10, 10, 0, 10));
 
             // Input Folder 左邊
+            JPanel inputPanelTitle = new JPanel((new BorderLayout()));
             JPanel inputPanel = new JPanel(new BorderLayout());
             JLabel inputLabel = new JLabel("Input Folders or Markdown Files:");
             inputFolderModel = new DefaultListModel<>();
             inputFolderList = new JList<>(inputFolderModel);
             inputFolderList.setTransferHandler(new FileDropHandler(true, inputFolderModel));  // 支援拖放資料夾或文件
             JScrollPane inputScrollPane = new JScrollPane(inputFolderList);  // 添加 ScrollPane 以支持多個來源
-            inputPanel.add(inputLabel, BorderLayout.NORTH);
+
+            // Input Folder  >> 標題文字 :  按鈕  ， 下方為丟檔案進去的區塊
+            inputPanelTitle.add(inputLabel, BorderLayout.WEST);
+            inputPanel.add(inputPanelTitle, BorderLayout.NORTH);
             inputPanel.add(inputScrollPane, BorderLayout.CENTER);
             panelGridMain.add(inputPanel);
 
@@ -468,6 +482,16 @@ public class MarkdownExtractorGUI extends JFrame {
             errorMsgPanel.add(errorScrollPane, BorderLayout.CENTER);
             panelGrid2.add(errorMsgPanel);
             myBasicPanel.add(panelGrid2, BorderLayout.CENTER);
+
+            // 添加清空按鈕來清空使用者丟入的檔案或資料夾
+            JButton clearButton = new JButton("Clear Input");
+            clearButton.addActionListener(e -> {
+                inputFolderModel.clear();  // 清空輸入的檔案或資料夾列表
+                JOptionPane.showMessageDialog(ancestorWindow, "Input files and folders cleared.");
+            });
+
+            // 將 clearButton 添加到界面中的合適位置。
+            inputPanelTitle.add(clearButton, BorderLayout.EAST);
 
             // Mouse click event for the error log list
             errorLogList.addMouseListener(new MouseAdapter() {
@@ -621,19 +645,19 @@ public class MarkdownExtractorGUI extends JFrame {
                     String imageUrl = markdownMatcher.group(1);
 
                     // 調試訊息：打印圖片的原始路徑
-                    System.out.println("檢查圖片路徑: " + imageUrl);
+                    // // System.out.println("檢查圖片路徑: " + imageUrl);
 
                     // 首先檢查圖片是否存在
                     if (isImagePathValid(mdFilePath.getParent().toFile(), imageUrl)) {
                         updatedContent.append(imageUrl);  // 路徑正確，保持原路徑
-                        System.out.println("圖片存在: " + imageUrl);
+                        // // System.out.println("圖片存在: " + imageUrl);
                     } else {
                         // 嘗試修正圖片路徑
                         String fixedUrl = fixImagePath(mdFilePath.getParent().toFile(), imageUrl);
                         if (fixedUrl != null) {
                             updatedContent.append(fixedUrl); // 插入修正後的路徑
                             contentModified = true; // 標記內容已變更
-                            System.out.println("修正圖片路徑: " + fixedUrl);
+                            // // System.out.println("修正圖片路徑: " + fixedUrl);
                         } else {
                             updatedContent.append(imageUrl); // 如果修正失敗，保持原路徑
                             missingImages.add(imageUrl);  // 記錄缺失的圖片
@@ -652,19 +676,19 @@ public class MarkdownExtractorGUI extends JFrame {
                     finalContent.append(updatedContent, lastIndex, htmlMatcher.start(1));
                     String imageUrl = htmlMatcher.group(1);
 
-                    System.out.println("檢查 HTML 圖片路徑: " + imageUrl);
+                    // System.out.println("檢查 HTML 圖片路徑: " + imageUrl);
 
                     // 檢查圖片是否存在
                     if (isImagePathValid(mdFilePath.getParent().toFile(), imageUrl)) {
                         finalContent.append(imageUrl); // 路徑正確，保持原路徑
-                        System.out.println("HTML 圖片存在: " + imageUrl);
+                        // System.out.println("HTML 圖片存在: " + imageUrl);
                     } else {
                         // 嘗試修正圖片路徑
                         String fixedUrl = fixImagePath(mdFilePath.getParent().toFile(), imageUrl);
                         if (fixedUrl != null) {
                             finalContent.append(fixedUrl); // 插入修正後的路徑
                             contentModified = true; // 標記內容已變更
-                            System.out.println("修正 HTML 圖片路徑: " + fixedUrl);
+                            // System.out.println("修正 HTML 圖片路徑: " + fixedUrl);
                         } else {
                             finalContent.append(imageUrl); // 如果修正失敗，保持原路徑
                             missingImages.add(imageUrl);  // 記錄缺失的圖片
@@ -817,7 +841,7 @@ public class MarkdownExtractorGUI extends JFrame {
                 JOptionPane.showMessageDialog(ancestorWindow, "Input files and folders cleared.");
             });
 
-            // 將 clearButton 添加到界面中的合適位置，例如在 "Process Markdown" 按鈕旁邊
+            // 將 clearButton 添加到界面中的合適位置。
             inputPanelTitle.add(clearButton, BorderLayout.EAST);
 
             return myBasicPanel;
@@ -918,6 +942,8 @@ public class MarkdownExtractorGUI extends JFrame {
         private String generateMarkdownTable(List<String[]> headers, int maxLevel) {
             StringBuilder sb = new StringBuilder();
 
+            // 檢查每一層是否有內容，動態調整 maxLevel
+            maxLevel = adjustMaxLevel(headers, maxLevel);
             boolean includeNumbering = includeNumberingCheckbox.isSelected(); // 確認是否需要編號
 
             // 根據 maxLevel 動態生成表格標題
@@ -941,8 +967,7 @@ public class MarkdownExtractorGUI extends JFrame {
 
             // 用來存儲上一行的標題，追踪重複的標題並保持空白
             String[] previousRow = new String[maxLevel];
-            Arrays.fill(previousRow, "");
-
+            Arrays.fill(previousRow, ""); // 確保每個元素被設置為空字串
             // 填寫表格內容
             int rowCount = 1; // 用來生成編號的計數器
             for (String[] row : headers) {
@@ -970,6 +995,27 @@ public class MarkdownExtractorGUI extends JFrame {
             return sb.toString();
         }
 
+        // 調整 maxLevel，確保只生成有內容的欄位
+        private int adjustMaxLevel(List<String[]> headers, int maxLevel) {
+            // 檢查每一層是否有內容
+            for (int level = maxLevel - 1; level >= 0; level--) {
+                boolean hasContent = false;
+                for (String[] row : headers) {
+                    if (row[level] != null && !row[level].trim().isEmpty()) {
+                        hasContent = true;
+                        break;
+                    }
+                }
+                if (!hasContent) {
+                    maxLevel--; // 如果該層沒有內容，減少 maxLevel
+                } else {
+                    break; // 找到有內容的層級後，停止繼續減少
+                }
+            }
+            return maxLevel;
+        }
+
+
 
 
         // 解析 Markdown 內容，根據選擇的層級提取標題
@@ -993,7 +1039,19 @@ public class MarkdownExtractorGUI extends JFrame {
                     currentRow[2] = line.substring(4).trim(); // 儲存第三層標題
                     for (int i = 3; i < maxLevel; i++) currentRow[i] = ""; // 清空更低層級的資料
                     headers.add(currentRow.clone());
-                } // 繼續添加更多層級...
+                } else if (line.startsWith("#### ") && maxLevel >= 4) {
+                    currentRow[3] = line.substring(5).trim(); // 儲存第三層標題
+                    for (int i = 4; i < maxLevel; i++) currentRow[i] = ""; // 清空更低層級的資料
+                    headers.add(currentRow.clone());
+                } else if (line.startsWith("##### ") && maxLevel >= 5) {
+                    currentRow[4] = line.substring(6).trim(); // 儲存第三層標題
+                    for (int i = 5; i < maxLevel; i++) currentRow[i] = ""; // 清空更低層級的資料
+                    headers.add(currentRow.clone());
+                } else if (line.startsWith("###### ") && maxLevel >= 6) {
+                    currentRow[5] = line.substring(7).trim(); // 儲存第三層標題
+                    for (int i = 6; i < maxLevel; i++) currentRow[i] = ""; // 清空更低層級的資料
+                    headers.add(currentRow.clone());
+                }
             }
 
             return headers;
