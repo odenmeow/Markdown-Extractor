@@ -25,7 +25,7 @@ public class MarkdownExtractorGUI extends JFrame {
     private JTabbedPane tabbedPane;  // 新增的頁簽
     private Tab1_getImageFolder_MarkdownFile tab1; // 定義 tab1
     private Tab2_autoRestoreRelativeURL tab2; // 定義 tab2
-    private Tab3_manualRestoreRelativeURL tab3; // 定義 tab3
+    private Tab3_createOutlineTable tab3; // 定義 tab3
 
     public MarkdownExtractorGUI() {
         setTitle("Markdown Extractor");
@@ -41,9 +41,14 @@ public class MarkdownExtractorGUI extends JFrame {
         tab1 = new Tab1_getImageFolder_MarkdownFile(this);
         tabbedPane.addTab("Get images && .md", tab1.createFirstTab());
 
+        // 初始化 tab2 類別並新增到頁簽
         tab2 = new Tab2_autoRestoreRelativeURL(this);
         tabbedPane.addTab("Auto Adjust URL", tab2.createSecondTab());
-        // tabbedPane.addTab("第三頁", new JPanel());
+
+        // 初始化 tab3 類別並新增到頁簽
+        tab3 = new Tab3_createOutlineTable(this);
+        tabbedPane.addTab("OutLineCreator",tab3.createThirdTab());
+
 
         add(tabbedPane, BorderLayout.CENTER);
 
@@ -58,10 +63,65 @@ public class MarkdownExtractorGUI extends JFrame {
                     break;
                 case 1:
                     tab2.checkAndFixImagePaths();
+                    break;
+                case 2:
+                    tab3.processMarkdown();
+                    break;
             }
         });
 
         add(processButton, BorderLayout.SOUTH);
+    }
+
+    // TransferHandler to handle file and folder drops
+    private class FileDropHandler extends TransferHandler {
+        private boolean isInput;
+        private DefaultListModel<String> ioFolderModel;
+
+
+        public FileDropHandler(boolean isInput, DefaultListModel<String> ioFolderModel) {
+            this.isInput = isInput;
+            this.ioFolderModel = ioFolderModel;
+        }
+
+        @Override
+        public boolean canImport(TransferSupport support) {
+            return support.isDataFlavorSupported(DataFlavor.javaFileListFlavor);
+        }
+
+        @Override
+        public boolean importData(TransferSupport support) {
+            if (!canImport(support)) {
+                return false;
+            }
+
+            try {
+                List<File> files = (List<File>) support.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
+                if (!files.isEmpty()) {
+                    for (File selectedFile : files) {
+                        if (isInput) {
+                            // 檢查是否為文件或資料夾
+                            if (selectedFile.isDirectory() || selectedFile.getName().endsWith(".md")) {
+                                ioFolderModel.addElement(selectedFile.getAbsolutePath());
+                            }
+                        } else {
+                            if (selectedFile.isDirectory()) {
+                                // 如果已有一個輸出資料夾，則清空列表，然後添加新的資料夾
+                                if (ioFolderModel.size() > 0) {
+                                    ioFolderModel.clear();
+                                    System.out.println("已經除");
+                                }
+                                ioFolderModel.addElement(selectedFile.getAbsolutePath());
+                            }
+                        }
+                    }
+                    return true;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return false;
+        }
     }
 
     private class Tab1_getImageFolder_MarkdownFile extends Component {
@@ -325,57 +385,6 @@ public class MarkdownExtractorGUI extends JFrame {
 
                 JOptionPane.showMessageDialog(this, scrollPane, "Missing Images in " + mdFile, JOptionPane.ERROR_MESSAGE);
             }
-        }
-    }
-    // TransferHandler to handle file and folder drops
-
-    private class FileDropHandler extends TransferHandler {
-        private boolean isInput;
-        private DefaultListModel<String> ioFolderModel;
-
-
-        public FileDropHandler(boolean isInput, DefaultListModel<String> ioFolderModel) {
-            this.isInput = isInput;
-            this.ioFolderModel = ioFolderModel;
-        }
-
-        @Override
-        public boolean canImport(TransferSupport support) {
-            return support.isDataFlavorSupported(DataFlavor.javaFileListFlavor);
-        }
-
-        @Override
-        public boolean importData(TransferSupport support) {
-            if (!canImport(support)) {
-                return false;
-            }
-
-            try {
-                List<File> files = (List<File>) support.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
-                if (!files.isEmpty()) {
-                    for (File selectedFile : files) {
-                        if (isInput) {
-                            // 檢查是否為文件或資料夾
-                            if (selectedFile.isDirectory() || selectedFile.getName().endsWith(".md")) {
-                                ioFolderModel.addElement(selectedFile.getAbsolutePath());
-                            }
-                        } else {
-                            if (selectedFile.isDirectory()) {
-                                // 如果已有一個輸出資料夾，則清空列表，然後添加新的資料夾
-                                if (ioFolderModel.size() > 0) {
-                                    ioFolderModel.clear();
-                                    System.out.println("已經除");
-                                }
-                                ioFolderModel.addElement(selectedFile.getAbsolutePath());
-                            }
-                        }
-                    }
-                    return true;
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            return false;
         }
     }
 
@@ -754,10 +763,243 @@ public class MarkdownExtractorGUI extends JFrame {
         }
     }
 
+    private class Tab3_createOutlineTable extends Component {
+        private DefaultListModel<String> inputFolderModel;  // 支援拖曳輸入 .md 檔案或資料夾
+        private JList<String> inputFolderList;
+        private JSpinner levelSpinner;  // 用於選擇解析的標題層級
+        private JFrame ancestorWindow;
+        private JCheckBox includeNumberingCheckbox; // 新增一個打勾框，控制是否顯示編號
+        public Tab3_createOutlineTable(JFrame ancestorWindow) {
+            this.ancestorWindow = ancestorWindow;
+        }
 
-    private class Tab3_manualRestoreRelativeURL extends Component{
+        private Component createThirdTab() {
+            JPanel myBasicPanel = new JPanel(new BorderLayout());
 
+            // 佈局調整：上方 Input Folder 列表，底部選擇解析層級的元件
+            JPanel panelGridMain = new JPanel(new BorderLayout(10, 10));
+            panelGridMain.setBorder(new EmptyBorder(10, 10, 10, 10));
+
+            // Input Folder
+            JPanel inputPanelTitle = new JPanel((new BorderLayout()));
+            JPanel inputPanel = new JPanel(new BorderLayout());
+            JLabel inputLabel = new JLabel("Input Folders or Markdown Files:");
+            inputFolderModel = new DefaultListModel<>();
+            inputFolderList = new JList<>(inputFolderModel);
+            inputFolderList.setTransferHandler(new FileDropHandler(true, inputFolderModel));  // 支援拖放資料夾或文件
+            JScrollPane inputScrollPane = new JScrollPane(inputFolderList);  // 添加 ScrollPane 以支持多個來源
+            inputPanelTitle.add(inputLabel, BorderLayout.WEST);
+
+            inputPanel.add(inputPanelTitle, BorderLayout.NORTH);
+            inputPanel.add(inputScrollPane, BorderLayout.CENTER);
+
+            panelGridMain.add(inputPanel, BorderLayout.CENTER);
+
+            // 標題層級選擇
+            JPanel controlPanel = new JPanel(new BorderLayout());
+            JLabel levelLabel = new JLabel("Select Heading Level to Parse:");
+            levelSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 6, 1));  // 支援選擇解析的層級，預設為3層 (#, ##, ###)
+            controlPanel.add(levelLabel, BorderLayout.NORTH);
+            controlPanel.add(levelSpinner, BorderLayout.CENTER);
+
+            // 新增打勾框來選擇是否顯示編號
+            includeNumberingCheckbox = new JCheckBox("Include Numbering");
+            controlPanel.add(includeNumberingCheckbox, BorderLayout.SOUTH); // 把勾選框加到下方
+
+            panelGridMain.add(controlPanel, BorderLayout.SOUTH);
+
+            myBasicPanel.add(panelGridMain, BorderLayout.CENTER);
+
+            // 添加清空按鈕來清空使用者丟入的檔案或資料夾
+            JButton clearButton = new JButton("Clear Input");
+            clearButton.addActionListener(e -> {
+                inputFolderModel.clear();  // 清空輸入的檔案或資料夾列表
+                JOptionPane.showMessageDialog(ancestorWindow, "Input files and folders cleared.");
+            });
+
+            // 將 clearButton 添加到界面中的合適位置，例如在 "Process Markdown" 按鈕旁邊
+            inputPanelTitle.add(clearButton, BorderLayout.EAST);
+
+            return myBasicPanel;
+        }
+
+        // 點擊 "Process Markdown" 時的處理邏輯
+        public void processMarkdown() {
+            if (inputFolderModel.isEmpty()) {
+                JOptionPane.showMessageDialog(ancestorWindow, "Please select input folders or files.");
+                return;
+            }
+
+            // 獲取使用者選擇的解析層級
+            int selectedLevel = (int) levelSpinner.getValue();
+
+            try {
+                for (int i = 0; i < inputFolderModel.size(); i++) {
+                    File selectedFile = new File(inputFolderModel.get(i));
+
+                    if (selectedFile.isDirectory()) {
+                        // 處理資料夾中的 .md 文件
+                        processDirectory(selectedFile, selectedLevel);
+                    } else if (selectedFile.getName().endsWith(".md")) {
+                        // 處理單一 .md 文件
+                        processMarkdownFile(selectedFile, selectedLevel);
+                    }
+                }
+
+                JOptionPane.showMessageDialog(ancestorWindow, "Processing completed.");
+            } catch (IOException e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(ancestorWindow, "An error occurred: " + e.getMessage());
+            }
+        }
+
+        // 對 Markdown 檔案進行解析並插入表格
+        private void processMarkdownFile(File file, int selectedLevel) throws IOException {
+            String content = new String(Files.readAllBytes(file.toPath()));
+
+            // 檢查是否已經有「# 大綱 表格」區塊
+            String updatedContent = removeOldOutlineTable(content);
+
+            // 解析新內容並生成表格
+            List<String[]> headers = parseMarkdownContent(updatedContent, selectedLevel);
+
+            if (!headers.isEmpty()) {
+                String table = generateMarkdownTable(headers, selectedLevel);  // 產生表格
+
+                // 將新表格插入「# 大綱 表格」區塊的頂部
+                updatedContent = "# OUTLINE \n" + table + "\n\n" + updatedContent;
+            }
+
+            // 將更新後的內容寫回文件
+            Files.write(file.toPath(), updatedContent.getBytes());
+        }
+
+        // 移除舊的「# OUTLINE」區塊，包括表格內容和 # OUTLINE 標題本身
+        private String removeOldOutlineTable(String content) {
+            StringBuilder updatedContent = new StringBuilder();
+            boolean inOutlineSection = false;  // 判斷是否在「大綱 表格」區域
+            String[] lines = content.split("\n");
+
+            for (String line : lines) {
+                // 偵測到 # OUTLINE，進入「大綱 表格」區域並不加入這行內容
+                if (line.startsWith("# OUTLINE")) {
+                    inOutlineSection = true;  // 進入「大綱 表格」區域
+                    continue;  // 跳過「# OUTLINE」這行
+                }
+
+                // 偵測到下一個標題時，退出「大綱 表格」區域
+                if (inOutlineSection && line.startsWith("#") && !line.startsWith("# OUTLINE")) {
+                    inOutlineSection = false;  // 退出「大綱 表格」區域
+                }
+
+                // 只有不在「大綱 表格」區域時才將內容加入 updatedContent
+                if (!inOutlineSection) {
+                    updatedContent.append(line).append("\n");
+                }
+            }
+
+            return updatedContent.toString();
+        }
+
+        private void processDirectory(File directory, int selectedLevel) throws IOException {
+            File[] files = directory.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isDirectory()) {
+                        processDirectory(file, selectedLevel);  // 遞迴處理子資料夾
+                    } else if (file.getName().endsWith(".md")) {
+                        processMarkdownFile(file, selectedLevel);  // 處理 .md 文件
+                    }
+                }
+            }
+        }
+
+        // 生成 Markdown 表格
+        private String generateMarkdownTable(List<String[]> headers, int maxLevel) {
+            StringBuilder sb = new StringBuilder();
+
+            boolean includeNumbering = includeNumberingCheckbox.isSelected(); // 確認是否需要編號
+
+            // 根據 maxLevel 動態生成表格標題
+            sb.append("|");
+            if (includeNumbering) {
+                sb.append(" 編號 |"); // 如果勾選了顯示編號，添加編號列
+            }
+            for (int i = 1; i <= maxLevel; i++) {
+                sb.append(" 標題").append(i).append(" |");
+            }
+            sb.append("\n|");
+
+            // 根據 maxLevel 動態生成分隔行
+            if (includeNumbering) {
+                sb.append(" --- |"); // 編號列的分隔行
+            }
+            for (int i = 1; i <= maxLevel; i++) {
+                sb.append(" --- |");
+            }
+            sb.append("\n");
+
+            // 用來存儲上一行的標題，追踪重複的標題並保持空白
+            String[] previousRow = new String[maxLevel];
+            Arrays.fill(previousRow, "");
+
+            // 填寫表格內容
+            int rowCount = 1; // 用來生成編號的計數器
+            for (String[] row : headers) {
+                boolean isNewParent = row[0] != null && !row[0].trim().isEmpty() && !row[0].equals(previousRow[0]); // 判斷是否為新的父標題
+
+                sb.append("| ");
+                if (includeNumbering && isNewParent) {
+                    sb.append(rowCount++).append(". | "); // 只有當「標題1」有內容且不同於上一行時，才生成編號
+                } else if (includeNumbering) {
+                    sb.append(" | "); // 否則保持編號欄空白
+                }
+
+                for (int i = 0; i < maxLevel; i++) {
+                    // 父標題相同時保持空白
+                    if (row[i] != null && !row[i].equals(previousRow[i])) {
+                        sb.append(row[i]).append(" | ");
+                        previousRow[i] = row[i]; // 更新上一行的內容
+                    } else {
+                        sb.append(" | "); // 空白單元格
+                    }
+                }
+                sb.append("\n");
+            }
+
+            return sb.toString();
+        }
+
+
+
+        // 解析 Markdown 內容，根據選擇的層級提取標題
+        private List<String[]> parseMarkdownContent(String content, int maxLevel) {
+            List<String[]> headers = new ArrayList<>();
+            String[] currentRow = new String[maxLevel];
+            Arrays.fill(currentRow, "");
+
+            String[] lines = content.split("\n");
+            for (String line : lines) {
+                if (line.startsWith("# ") && maxLevel >= 1) {
+                    currentRow = new String[maxLevel]; // 清空當前行
+                    Arrays.fill(currentRow, ""); // 清空行中的每個層級
+                    currentRow[0] = line.substring(2).trim(); // 儲存第一層標題
+                    headers.add(currentRow.clone());
+                } else if (line.startsWith("## ") && maxLevel >= 2) {
+                    currentRow[1] = line.substring(3).trim(); // 儲存第二層標題
+                    for (int i = 2; i < maxLevel; i++) currentRow[i] = ""; // 清空更低層級的資料
+                    headers.add(currentRow.clone());
+                } else if (line.startsWith("### ") && maxLevel >= 3) {
+                    currentRow[2] = line.substring(4).trim(); // 儲存第三層標題
+                    for (int i = 3; i < maxLevel; i++) currentRow[i] = ""; // 清空更低層級的資料
+                    headers.add(currentRow.clone());
+                } // 繼續添加更多層級...
+            }
+
+            return headers;
+        }
     }
+
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new MarkdownExtractorGUI().setVisible(true));
