@@ -1121,10 +1121,10 @@ public class MarkdownExtractorGUI extends JFrame {
             JScrollPane inputScrollPane = new JScrollPane(inputImageList);
 
             // 添加清空按鈕
-            JButton clearButton = new JButton("Clear Input");
+            JButton clearButton = new JButton("Clear Input & Output");
             clearButton.addActionListener(e -> {
                 inputImageModel.clear();  // 清空輸入圖片列表
-                // outputListModel.clear();  // 清空輸出資料夾列表 先放置。
+                outputListModel.clear();  // 清空輸出資料夾列表 先放置。
                 JOptionPane.showMessageDialog(ancestorWindow, "Input images and output folder cleared.");
             });
 
@@ -1231,22 +1231,73 @@ public class MarkdownExtractorGUI extends JFrame {
         }
 
         private void compressImage(String imagePath, String outputFolder, int compressionLevel) {
-            String outputFilePath = outputFolder + File.separator + new File(imagePath).getName();
-            String command = String.format("ffmpeg -i \"%s\" -compression_level %d \"%s\"", imagePath, compressionLevel, outputFilePath);
+            // 創建臨時文件夾
+            File tempProcessFolder = new File(outputFolder, "tempProcessFolder");
+            if (!tempProcessFolder.exists()) {
+                tempProcessFolder.mkdirs();
+            }
+
+            // 在臨時文件夾中存放壓縮後的文件
+            String tempOutputFilePath = tempProcessFolder.getAbsolutePath() + File.separator + new File(imagePath).getName();
+
+            // 刪除既有的臨時檔案（如果存在）
+            File tempOutputFile = new File(tempOutputFilePath);
+            if (tempOutputFile.exists()) {
+                tempOutputFile.delete();
+            }
+
+            // 使用 ffmpeg 進行壓縮
+            String command = String.format("ffmpeg -y -i \"%s\" -compression_level %d \"%s\"", imagePath, compressionLevel, tempOutputFilePath);
 
             try {
                 Process process = Runtime.getRuntime().exec(command);
                 process.waitFor();
                 // 壓縮後的圖片添加到輸出列表
-                outputModel.addElement(outputFilePath);
+                outputModel.addElement(tempOutputFilePath);
             } catch (Exception e) {
                 e.printStackTrace();
                 JOptionPane.showMessageDialog(ancestorWindow, "Failed to compress image: " + imagePath);
             }
         }
 
+
         public void replaceAndGO() {
-            // 您可以在這裡實現替換和執行的功能
+            if (outputListModel.isEmpty()) {
+                JOptionPane.showMessageDialog(ancestorWindow, "Please provide an output folder.");
+                return;
+            }
+
+            // 獲取輸出的資料夾（假設只選擇一個輸出資料夾）
+            String outputFolder = outputListModel.getElementAt(0);
+            File tempProcessFolder = new File(outputFolder, "tempProcessFolder");
+
+            if (!tempProcessFolder.exists() || tempProcessFolder.listFiles() == null) {
+                JOptionPane.showMessageDialog(ancestorWindow, "No processed files found to replace.");
+                return;
+            }
+
+            // 遍歷臨時文件夾中的文件，移動到最終的輸出資料夾
+            for (File tempFile : tempProcessFolder.listFiles()) {
+                File finalOutputFile = new File(outputFolder, tempFile.getName());
+                if (finalOutputFile.exists()) {
+                    finalOutputFile.delete(); // 刪除既有的輸出檔案，確保覆蓋
+                }
+                try {
+                    Files.move(tempFile.toPath(), finalOutputFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    JOptionPane.showMessageDialog(ancestorWindow, "Failed to move file: " + tempFile.getAbsolutePath());
+                }
+            }
+
+            // 刪除臨時文件夾
+            try {
+                Files.delete(tempProcessFolder.toPath());
+                JOptionPane.showMessageDialog(ancestorWindow, "Files have been moved and temp folder deleted successfully.");
+            } catch (IOException e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(ancestorWindow, "Failed to delete temporary process folder.");
+            }
         }
     }
 
