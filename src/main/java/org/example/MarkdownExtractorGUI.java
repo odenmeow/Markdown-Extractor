@@ -4,6 +4,8 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
@@ -26,10 +28,11 @@ public class MarkdownExtractorGUI extends JFrame {
     private Tab1_getImageFolder_MarkdownFile tab1; // 定義 tab1
     private Tab2_autoRestoreRelativeURL tab2; // 定義 tab2
     private Tab3_createOutlineTable tab3; // 定義 tab3
+    private Tab4_imageCompressor tab4; // 定義 tab4
 
     public MarkdownExtractorGUI() {
         setTitle("Markdown Extractor");
-        setSize(650, 400);
+        setSize(650, 450);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
@@ -49,6 +52,10 @@ public class MarkdownExtractorGUI extends JFrame {
         tab3 = new Tab3_createOutlineTable(this);
         tabbedPane.addTab("OutLineCreator",tab3.createThirdTab());
 
+        // 初始化 tab4 類別並新增到頁簽
+        tab4 = new Tab4_imageCompressor(this);
+
+        tabbedPane.addTab("Images Compressor",tab4.createFourthTab());
 
         add(tabbedPane, BorderLayout.CENTER);
 
@@ -67,17 +74,31 @@ public class MarkdownExtractorGUI extends JFrame {
                 case 2:
                     tab3.processMarkdown();
                     break;
+                case 3:
+                    tab4.replaceAndGO();
+                    break;
             }
         });
 
         add(processButton, BorderLayout.SOUTH);
+
+        // 添加頁簽變更的監聽器
+        tabbedPane.addChangeListener(e -> {
+            int selectedIndex = tabbedPane.getSelectedIndex();
+            if (selectedIndex == 3) {
+                // 如果選中的是 tab4，修改按鈕文字為 "Replace and GO"
+                processButton.setText("Replace and GO");
+            } else {
+                // 否則恢復為 "Process Markdown"
+                processButton.setText("Process Markdown");
+            }
+        });
     }
 
     // TransferHandler to handle file and folder drops
     private class FileDropHandler extends TransferHandler {
-        private boolean isInput;
+        private boolean isInput;  // true for input, false for output
         private DefaultListModel<String> ioFolderModel;
-
 
         public FileDropHandler(boolean isInput, DefaultListModel<String> ioFolderModel) {
             this.isInput = isInput;
@@ -96,32 +117,47 @@ public class MarkdownExtractorGUI extends JFrame {
             }
 
             try {
+                // 獲取拖放的文件列表
                 List<File> files = (List<File>) support.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
-                if (!files.isEmpty()) {
-                    for (File selectedFile : files) {
-                        if (isInput) {
-                            // 檢查是否為文件或資料夾
-                            if (selectedFile.isDirectory() || selectedFile.getName().endsWith(".md")) {
-                                ioFolderModel.addElement(selectedFile.getAbsolutePath());
+                for (File file : files) {
+                    // 如果是輸入圖片區域，允許添加資料夾、.md 文件和圖片文件
+                    if (isInput) {
+                        if ((file.isDirectory() || file.getName().endsWith(".md") || isImageFile(file))
+                                && !ioFolderModel.contains(file.getAbsolutePath())) {
+                            // 檢查是否已存在列表中，若不存在則添加
+                            ioFolderModel.addElement(file.getAbsolutePath());
+                        }
+                    } else {
+                        // 如果是輸出資料夾區域，則只允許添加資料夾
+                        if (file.isDirectory() && !ioFolderModel.contains(file.getAbsolutePath())) {
+                            if (ioFolderModel.size() > 0) {
+                                ioFolderModel.clear();  // 清除現有資料夾，確保只有一個輸出資料夾
                             }
-                        } else {
-                            if (selectedFile.isDirectory()) {
-                                // 如果已有一個輸出資料夾，則清空列表，然後添加新的資料夾
-                                if (ioFolderModel.size() > 0) {
-                                    ioFolderModel.clear();
-                                }
-                                ioFolderModel.addElement(selectedFile.getAbsolutePath());
-                            }
+                            ioFolderModel.addElement(file.getAbsolutePath());
                         }
                     }
-                    return true;
                 }
+                return true;
             } catch (Exception e) {
                 e.printStackTrace();
             }
             return false;
         }
+
+        // Helper method to determine if the file is an image
+        private boolean isImageFile(File file) {
+            String[] imageExtensions = {"png", "jpg", "jpeg", "gif", "bmp"};
+            String fileName = file.getName().toLowerCase();
+            for (String ext : imageExtensions) {
+                if (fileName.endsWith(ext)) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
+
+
 
     private class Tab1_getImageFolder_MarkdownFile extends Component {
         private DefaultListModel<String> inputFolderModel;
@@ -1055,6 +1091,162 @@ public class MarkdownExtractorGUI extends JFrame {
             }
 
             return headers;
+        }
+    }
+
+
+    private class Tab4_imageCompressor extends Component {
+        private DefaultListModel<String> inputImageModel;  // 支援拖曳輸入圖片
+        private JList<String> inputImageList;
+        private JList<String> outputFolderList;  // 輸出資料夾列表
+        private DefaultListModel<String> outputListModel;  // 輸出資料夾的模型
+        private JTextField compressionLevelField;  // 壓縮級別
+        private DefaultListModel<String> outputModel;  // 顯示壓縮後的圖片
+        private JList<String> outputList;  // 顯示輸出圖片列表
+        private JFrame ancestorWindow;
+
+        public Tab4_imageCompressor(JFrame ancestorWindow) {
+            this.ancestorWindow = ancestorWindow;
+        }
+
+        private Component createFourthTab() {
+            JPanel myBasicPanel = new JPanel(new BorderLayout());
+
+            // 上方輸入圖片區域
+            JPanel inputPanel = new JPanel(new BorderLayout());
+            JLabel inputLabel = new JLabel("Input Images:");
+            inputImageModel = new DefaultListModel<>();
+            inputImageList = new JList<>(inputImageModel);
+            inputImageList.setTransferHandler(new FileDropHandler(true, inputImageModel));  // 支援拖放圖片
+            JScrollPane inputScrollPane = new JScrollPane(inputImageList);
+
+            // 添加清空按鈕
+            JButton clearButton = new JButton("Clear Input");
+            clearButton.addActionListener(e -> {
+                inputImageModel.clear();  // 清空輸入圖片列表
+                // outputListModel.clear();  // 清空輸出資料夾列表 先放置。
+                JOptionPane.showMessageDialog(ancestorWindow, "Input images and output folder cleared.");
+            });
+
+            JPanel inputPanelTitle = new JPanel(new BorderLayout());
+            inputPanelTitle.add(inputLabel, BorderLayout.WEST);
+            inputPanelTitle.add(clearButton, BorderLayout.EAST);
+
+            inputPanel.add(inputPanelTitle, BorderLayout.NORTH);
+            inputPanel.add(inputScrollPane, BorderLayout.CENTER);
+            myBasicPanel.add(inputPanel, BorderLayout.NORTH);
+
+            // 下方輸出設定區域
+            JPanel bottomPanel = new JPanel(new BorderLayout());
+
+            // 上半部分：輸出資料夾選擇區域
+            JPanel outputFolderPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            JLabel outputLabel = new JLabel("Output Folder:");
+
+            // 輸出資料夾列表，支持拖放功能，使用 JList 作為輸出資料夾，限制高度
+            outputListModel = new DefaultListModel<>();
+            outputFolderList = new JList<>(outputListModel);
+            outputFolderList.setTransferHandler(new FileDropHandler(false, outputListModel));  // 支援拖放資料夾
+
+            // 限制 JList 的顯示行數和大小
+            outputFolderList.setVisibleRowCount(1); // 設定可見行數，保持高度一致
+            JScrollPane outputFolderScrollPane = new JScrollPane(outputFolderList);
+            outputFolderScrollPane.setPreferredSize(new Dimension(500, 30)); // 設置首選尺寸來限制高度和寬度
+            outputFolderScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);  // 不顯示水平捲軸
+            outputFolderScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);  // 不顯示垂直捲軸
+
+            outputFolderPanel.add(outputLabel);
+            outputFolderPanel.add(outputFolderScrollPane);
+
+            // 添加上半部分到 bottomPanel 的上方
+            bottomPanel.add(outputFolderPanel, BorderLayout.NORTH);
+
+            // 下半部分：壓縮級別和處理按鈕
+            JPanel compressionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            JLabel compressionLabel = new JLabel("Compression Level:");
+            compressionLevelField = new JTextField("9", 5);  // 預設壓縮級別為 9
+            JButton processButton = new JButton("Process Images");
+
+            compressionPanel.add(compressionLabel);
+            compressionPanel.add(compressionLevelField);
+            compressionPanel.add(processButton);
+
+            // 添加下半部分到 bottomPanel 的中間
+            bottomPanel.add(compressionPanel, BorderLayout.CENTER);
+
+            // 監聽處理按鈕
+            processButton.addActionListener(new ActionListener() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    processImages();
+                }
+            });
+
+            // 輸出圖片顯示區
+            outputModel = new DefaultListModel<>();
+            outputList = new JList<>(outputModel);
+            JScrollPane outputScrollPane = new JScrollPane(outputList);
+
+            // output 欣賞區 放下方( processMarkdown 之上)
+            bottomPanel.add(outputScrollPane, BorderLayout.SOUTH);
+            myBasicPanel.add(bottomPanel, BorderLayout.CENTER);
+
+            return myBasicPanel;
+        }
+
+        private void processImages() {
+            // 檢查是否有輸入圖片和輸出資料夾
+            if (inputImageModel.isEmpty()) {
+                JOptionPane.showMessageDialog(ancestorWindow, "Please provide input images.");
+                return;
+            }
+
+            if (outputListModel.isEmpty()) {
+                JOptionPane.showMessageDialog(ancestorWindow, "Please provide an output folder.");
+                return;
+            }
+
+            // 獲取輸出的資料夾（假設只選擇一個輸出資料夾）
+            String outputFolder = outputListModel.getElementAt(0);
+            int compressionLevel;
+
+            try {
+                compressionLevel = Integer.parseInt(compressionLevelField.getText());
+            } catch (NumberFormatException e) {
+                JOptionPane.showMessageDialog(ancestorWindow, "Please enter a valid compression level.");
+                return;
+            }
+
+            // 在這裡調用 ffmpeg 壓縮圖片的邏輯
+            String[] imagePaths = new String[inputImageModel.size()];
+            for (int i = 0; i < inputImageModel.size(); i++) {
+                imagePaths[i] = inputImageModel.getElementAt(i);
+            }
+
+            for (String imagePath : imagePaths) {
+                compressImage(imagePath, outputFolder, compressionLevel);
+            }
+
+            JOptionPane.showMessageDialog(ancestorWindow, "Image processing completed.");
+        }
+
+        private void compressImage(String imagePath, String outputFolder, int compressionLevel) {
+            String outputFilePath = outputFolder + File.separator + new File(imagePath).getName();
+            String command = String.format("ffmpeg -i \"%s\" -compression_level %d \"%s\"", imagePath, compressionLevel, outputFilePath);
+
+            try {
+                Process process = Runtime.getRuntime().exec(command);
+                process.waitFor();
+                // 壓縮後的圖片添加到輸出列表
+                outputModel.addElement(outputFilePath);
+            } catch (Exception e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(ancestorWindow, "Failed to compress image: " + imagePath);
+            }
+        }
+
+        public void replaceAndGO() {
+            // 您可以在這裡實現替換和執行的功能
         }
     }
 
