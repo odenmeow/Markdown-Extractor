@@ -479,7 +479,7 @@ public class MarkdownExtractorGUI extends JFrame {
             JPanel panelGridR = new JPanel(new GridLayout(2, 1, 10, 10));
             panelGridR.setBorder(new EmptyBorder(0, 10, 0, 10));
 
-            // Root Folder 中間
+            // Root Folder 右邊
             JPanel rootPanel = new JPanel(new BorderLayout());
             JLabel rootLabel = new JLabel("Root Folder: images & target's root");
             rootFolderModel = new DefaultListModel<>();
@@ -505,7 +505,7 @@ public class MarkdownExtractorGUI extends JFrame {
 
             myBasicPanel.add(panelGridMain, BorderLayout.NORTH);
 
-            // Failed files list (with scroll bar)
+            // Failed files list (with scroll bar) 下方 (p.s. 視窗最下方還有 processMarkdown按鈕)
             JPanel panelGrid2 = new JPanel(new GridLayout(1, 1, 30, 30));
             panelGrid2.setBorder(new EmptyBorder(10, 10, 10, 10));
 
@@ -1104,7 +1104,7 @@ public class MarkdownExtractorGUI extends JFrame {
         private DefaultListModel<String> outputModel;  // 顯示壓縮後的圖片
         private JList<String> outputList;  // 顯示輸出圖片列表
         private JFrame ancestorWindow;
-
+        private JTextField qualityField;
         public Tab4_imageCompressor(JFrame ancestorWindow) {
             this.ancestorWindow = ancestorWindow;
         }
@@ -1163,10 +1163,15 @@ public class MarkdownExtractorGUI extends JFrame {
 
             // 下半部分：壓縮級別和處理按鈕
             JPanel compressionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-            JLabel compressionLabel = new JLabel("Compression Level:");
-            compressionLevelField = new JTextField("9", 5);  // 預設壓縮級別為 9
+            JLabel compressionLabel = new JLabel("Compression Level(0-6best):");
+            compressionLevelField = new JTextField("5", 5);  // 預設壓縮級別為 9
             JButton processButton = new JButton("Process Images");
 
+            // 追加 webp 所使用的參數
+            JLabel qualityLabel = new JLabel("Quality(0-100best):");
+            qualityField = new JTextField("80", 5);  // 預設品質為 80
+            compressionPanel.add(qualityLabel);
+            compressionPanel.add(qualityField);
             compressionPanel.add(compressionLabel);
             compressionPanel.add(compressionLevelField);
             compressionPanel.add(processButton);
@@ -1209,11 +1214,13 @@ public class MarkdownExtractorGUI extends JFrame {
             // 獲取輸出的資料夾（假設只選擇一個輸出資料夾）
             String outputFolder = outputListModel.getElementAt(0);
             int compressionLevel;
+            int quality;
 
             try {
                 compressionLevel = Integer.parseInt(compressionLevelField.getText());
+                quality = Integer.parseInt(qualityField.getText());
             } catch (NumberFormatException e) {
-                JOptionPane.showMessageDialog(ancestorWindow, "Please enter a valid compression level.");
+                JOptionPane.showMessageDialog(ancestorWindow, "Please enter valid values for compression level and quality.");
                 return;
             }
 
@@ -1224,13 +1231,42 @@ public class MarkdownExtractorGUI extends JFrame {
             }
 
             for (String imagePath : imagePaths) {
-                compressImage(imagePath, outputFolder, compressionLevel);
+                compressImageWebp(imagePath, outputFolder, compressionLevel, quality);
             }
 
             JOptionPane.showMessageDialog(ancestorWindow, "Image processing completed.");
         }
 
-        private void compressImage(String imagePath, String outputFolder, int compressionLevel) {
+//        private void compressImagePNG(String imagePath, String outputFolder, int compressionLevel) {
+//            // 創建臨時文件夾
+//            File tempProcessFolder = new File(outputFolder, "tempProcessFolder");
+//            if (!tempProcessFolder.exists()) {
+//                tempProcessFolder.mkdirs();
+//            }
+//
+//            // 在臨時文件夾中存放壓縮後的文件
+//            String tempOutputFilePath = tempProcessFolder.getAbsolutePath() + File.separator + new File(imagePath).getName();
+//
+//            // 刪除既有的臨時檔案（如果存在）
+//            File tempOutputFile = new File(tempOutputFilePath);
+//            if (tempOutputFile.exists()) {
+//                tempOutputFile.delete();
+//            }
+//
+//            // 使用 ffmpeg 進行壓縮
+//            String command = String.format("ffmpeg -y -i \"%s\" -compression_level %d \"%s\"", imagePath, compressionLevel, tempOutputFilePath);
+//
+//            try {
+//                Process process = Runtime.getRuntime().exec(command);
+//                process.waitFor();
+//                // 壓縮後的圖片添加到輸出列表
+//                outputModel.addElement(tempOutputFilePath);
+//            } catch (Exception e) {
+//                e.printStackTrace();
+//                JOptionPane.showMessageDialog(ancestorWindow, "Failed to compress image: " + imagePath);
+//            }
+//        }
+        private void compressImageWebp(String imagePath, String outputFolder, int compressionLevel, int quality) {
             // 創建臨時文件夾
             File tempProcessFolder = new File(outputFolder, "tempProcessFolder");
             if (!tempProcessFolder.exists()) {
@@ -1238,7 +1274,7 @@ public class MarkdownExtractorGUI extends JFrame {
             }
 
             // 在臨時文件夾中存放壓縮後的文件
-            String tempOutputFilePath = tempProcessFolder.getAbsolutePath() + File.separator + new File(imagePath).getName();
+            String tempOutputFilePath = tempProcessFolder.getAbsolutePath() + File.separator + new File(imagePath).getName().replace(".png", ".webp");
 
             // 刪除既有的臨時檔案（如果存在）
             File tempOutputFile = new File(tempOutputFilePath);
@@ -1247,7 +1283,7 @@ public class MarkdownExtractorGUI extends JFrame {
             }
 
             // 使用 ffmpeg 進行壓縮
-            String command = String.format("ffmpeg -y -i \"%s\" -compression_level %d \"%s\"", imagePath, compressionLevel, tempOutputFilePath);
+            String command = String.format("ffmpeg -y -i \"%s\" -compression_level %d -q:v %d \"%s\"", imagePath, compressionLevel, quality, tempOutputFilePath);
 
             try {
                 Process process = Runtime.getRuntime().exec(command);
@@ -1259,7 +1295,6 @@ public class MarkdownExtractorGUI extends JFrame {
                 JOptionPane.showMessageDialog(ancestorWindow, "Failed to compress image: " + imagePath);
             }
         }
-
 
         public void replaceAndGO() {
             if (outputListModel.isEmpty()) {
