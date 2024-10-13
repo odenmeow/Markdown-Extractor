@@ -8,6 +8,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
@@ -1105,8 +1106,11 @@ public class MarkdownExtractorGUI extends JFrame {
         private JList<String> outputList;  // 顯示輸出圖片列表
         private JFrame ancestorWindow;
         private JTextField qualityField;
+        private Map<String, List<String>> processedImagesMap;  // 儲存每個 .md 文件對應成功處理的圖片 URL
+
         public Tab4_imageCompressor(JFrame ancestorWindow) {
             this.ancestorWindow = ancestorWindow;
+            this.processedImagesMap = new HashMap<>();
         }
 
         private Component createFourthTab() {
@@ -1114,7 +1118,7 @@ public class MarkdownExtractorGUI extends JFrame {
 
             // 上方輸入圖片區域
             JPanel inputPanel = new JPanel(new BorderLayout());
-            JLabel inputLabel = new JLabel("Input Images:");
+            JLabel inputLabel = new JLabel("Input markdownFiles:");
             inputImageModel = new DefaultListModel<>();
             inputImageList = new JList<>(inputImageModel);
             inputImageList.setTransferHandler(new FileDropHandler(true, inputImageModel));  // 支援拖放圖片
@@ -1124,7 +1128,8 @@ public class MarkdownExtractorGUI extends JFrame {
             JButton clearButton = new JButton("Clear Input & Output");
             clearButton.addActionListener(e -> {
                 inputImageModel.clear();  // 清空輸入圖片列表
-                outputListModel.clear();  // 清空輸出資料夾列表 先放置。
+                outputListModel.clear();  // 清空輸出資料夾列表 先放置，呈現為一列。
+                outputModel.clear(); // images 的輸出顯示區 多列
                 JOptionPane.showMessageDialog(ancestorWindow, "Input images and output folder cleared.");
             });
 
@@ -1141,7 +1146,7 @@ public class MarkdownExtractorGUI extends JFrame {
 
             // 上半部分：輸出資料夾選擇區域
             JPanel outputFolderPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-            JLabel outputLabel = new JLabel("Output Folder:");
+            JLabel outputLabel = new JLabel("Central Img Folder:");
 
             // 輸出資料夾列表，支持拖放功能，使用 JList 作為輸出資料夾，限制高度
             outputListModel = new DefaultListModel<>();
@@ -1200,9 +1205,8 @@ public class MarkdownExtractorGUI extends JFrame {
         }
 
         private void processImages() {
-            // 檢查是否有輸入圖片和輸出資料夾
             if (inputImageModel.isEmpty()) {
-                JOptionPane.showMessageDialog(ancestorWindow, "Please provide input images.");
+                JOptionPane.showMessageDialog(ancestorWindow, "Please provide input markdown files.");
                 return;
             }
 
@@ -1211,8 +1215,24 @@ public class MarkdownExtractorGUI extends JFrame {
                 return;
             }
 
-            // 獲取輸出的資料夾（假設只選擇一個輸出資料夾）
             String outputFolder = outputListModel.getElementAt(0);
+
+            // 清空臨時資料夾
+            File toBeClearTempProcessFolder = new File(outputFolder, "tempProcessFolder");
+            File toBeClearTempMdFolder = new File(outputFolder, "temp_md_files");
+            try {
+                if (toBeClearTempProcessFolder.exists()) {
+                    deleteDirectoryRecursively(toBeClearTempProcessFolder.toPath());
+                }
+                if (toBeClearTempMdFolder.exists()) {
+                    deleteDirectoryRecursively(toBeClearTempMdFolder.toPath());
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(ancestorWindow, "Failed to clean temporary process folders.");
+                return;
+            }
+
             int compressionLevel;
             int quality;
 
@@ -1223,21 +1243,78 @@ public class MarkdownExtractorGUI extends JFrame {
                 JOptionPane.showMessageDialog(ancestorWindow, "Please enter valid values for compression level and quality.");
                 return;
             }
-
-            // 在這裡調用 ffmpeg 壓縮圖片的邏輯
-            String[] imagePaths = new String[inputImageModel.size()];
+            List<String> noNeedCompressMarkDownFiles = new ArrayList<>();
             for (int i = 0; i < inputImageModel.size(); i++) {
-                imagePaths[i] = inputImageModel.getElementAt(i);
-            }
+                String inputPath = inputImageModel.getElementAt(i);
+                File inputFile = new File(inputPath);
 
-            for (String imagePath : imagePaths) {
-                compressImageWebp(imagePath, outputFolder, compressionLevel, quality);
-            }
+                if (inputFile.getName().endsWith(".md")) {
+                    // 處理 .md 文件中的圖片引用
+                    try {
+                        String content = new String(Files.readAllBytes(inputFile.toPath()));
+                        Matcher markdownMatcher = MARKDOWN_IMAGE_PATTERN.matcher(content);
+                        StringBuilder updatedContent = new StringBuilder();
+                        int lastIndex = 0;
+                        List<String> eachMarkdownOldImageUrls = new ArrayList<>();
 
-            JOptionPane.showMessageDialog(ancestorWindow, "Image processing completed.");
+                        while (markdownMatcher.find()) {
+                            updatedContent.append(content, lastIndex, markdownMatcher.start(1));
+                            String imageUrl = markdownMatcher.group(1);
+
+                            if (imageUrl.endsWith(".png")) {
+                                File imageFile = new File(inputFile.getParent(), imageUrl);
+                                if (imageFile.exists()) {
+                                    compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
+                                    String newImageUrl = imageUrl.replace(".png", ".webp");
+                                    updatedContent.append(newImageUrl);
+                                    // 儲存每個 .md 文件對應成功處理的圖片 URL
+                                    eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
+                                } else {
+                                    updatedContent.append(imageUrl);
+                                }
+                            } else {
+                                updatedContent.append(imageUrl);
+                            }
+
+                            lastIndex = markdownMatcher.end(1);
+                        }
+                        processedImagesMap.put(inputFile.getName(),eachMarkdownOldImageUrls);
+                        updatedContent.append(content.substring(lastIndex));
+
+
+                        if (!eachMarkdownOldImageUrls.isEmpty() && !outputModel.contains(inputFile.getName())) {
+                            outputModel.addElement(inputFile.getName());
+                            File tempMdFolder = new File(outputFolder, "temp_md_files");
+                            if (!tempMdFolder.exists()) {
+                                tempMdFolder.mkdirs();
+                            }
+
+                            File tempMdOutput = new File(tempMdFolder, inputFile.getName());
+                            // 使用 try-with-resources 寫入更新後的 .md 文件
+                            try (BufferedWriter writer = Files.newBufferedWriter(tempMdOutput.toPath())) {
+                                writer.write(updatedContent.toString());
+                            }
+                        }else{
+                            noNeedCompressMarkDownFiles.add(inputFile.getName());
+                        }
+
+
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        JOptionPane.showMessageDialog(ancestorWindow, "Failed to process markdown file: " + inputPath);
+                    }
+                }
+            }
+            StringBuilder completeMsg = new StringBuilder();
+            completeMsg.append("Markdown processing completed.\n");
+            noNeedCompressMarkDownFiles.forEach(notProcessFileName -> completeMsg.append(notProcessFileName +  ": 無 png 需壓縮，自動剔除\n"));
+            JOptionPane.showMessageDialog(ancestorWindow, completeMsg);
+
         }
 
-//        private void compressImagePNG(String imagePath, String outputFolder, int compressionLevel) {
+
+
+        //        private void compressImagePNG(String imagePath, String outputFolder, int compressionLevel) {
 //            // 創建臨時文件夾
 //            File tempProcessFolder = new File(outputFolder, "tempProcessFolder");
 //            if (!tempProcessFolder.exists()) {
@@ -1267,29 +1344,27 @@ public class MarkdownExtractorGUI extends JFrame {
 //            }
 //        }
         private void compressImageWebp(String imagePath, String outputFolder, int compressionLevel, int quality) {
-            // 創建臨時文件夾
             File tempProcessFolder = new File(outputFolder, "tempProcessFolder");
             if (!tempProcessFolder.exists()) {
                 tempProcessFolder.mkdirs();
             }
 
-            // 在臨時文件夾中存放壓縮後的文件
             String tempOutputFilePath = tempProcessFolder.getAbsolutePath() + File.separator + new File(imagePath).getName().replace(".png", ".webp");
-
-            // 刪除既有的臨時檔案（如果存在）
             File tempOutputFile = new File(tempOutputFilePath);
             if (tempOutputFile.exists()) {
                 tempOutputFile.delete();
             }
 
-            // 使用 ffmpeg 進行壓縮
             String command = String.format("ffmpeg -y -i \"%s\" -compression_level %d -q:v %d \"%s\"", imagePath, compressionLevel, quality, tempOutputFilePath);
 
             try {
                 Process process = Runtime.getRuntime().exec(command);
-                process.waitFor();
-                // 壓縮後的圖片添加到輸出列表
-                outputModel.addElement(tempOutputFilePath);
+                try (var inputStream = process.getInputStream();
+                     var errorStream = process.getErrorStream()) {
+                    process.waitFor();
+                    // 顯示的是 被轉換的 png 之 url，因為已經在 processImage 那邊有寫加入 .md 檔名就好，比較容易知道誰有被處理。
+                    // outputModel.addElement(tempOutputFilePath);
+                }
             } catch (Exception e) {
                 e.printStackTrace();
                 JOptionPane.showMessageDialog(ancestorWindow, "Failed to compress image: " + imagePath);
@@ -1305,13 +1380,14 @@ public class MarkdownExtractorGUI extends JFrame {
             // 獲取輸出的資料夾（假設只選擇一個輸出資料夾）
             String outputFolder = outputListModel.getElementAt(0);
             File tempProcessFolder = new File(outputFolder, "tempProcessFolder");
+            File tempMdFolder = new File(outputFolder, "temp_md_files");
 
             if (!tempProcessFolder.exists() || tempProcessFolder.listFiles() == null) {
                 JOptionPane.showMessageDialog(ancestorWindow, "No processed files found to replace.");
                 return;
             }
 
-            // 遍歷臨時文件夾中的文件，移動到最終的輸出資料夾
+            // 替換壓縮後的圖片
             for (File tempFile : tempProcessFolder.listFiles()) {
                 File finalOutputFile = new File(outputFolder, tempFile.getName());
                 if (finalOutputFile.exists()) {
@@ -1325,15 +1401,82 @@ public class MarkdownExtractorGUI extends JFrame {
                 }
             }
 
-            // 刪除臨時文件夾
+            // 替換 .md 文件（應替換原始的 .md 文件）
+            if (tempMdFolder.exists() && tempMdFolder.listFiles() != null) {
+                for (File tempMdFile : tempMdFolder.listFiles()) {
+                    // 從 inputImageModel 中找到對應的原始 .md 文件
+                    String originalMdFilePath = findOriginalMdFile(tempMdFile.getName());
+                    if (originalMdFilePath == null) {
+                        JOptionPane.showMessageDialog(ancestorWindow, "Original markdown file not found for: " + tempMdFile.getName());
+                        continue;
+                    }
+                    File originalMdFile = new File(originalMdFilePath);
+                    try {
+                        // 用臨時處理的 .md 文件替換原始文件
+                        Files.copy(tempMdFile.toPath(), originalMdFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        //System.out.println("替換成功: " + originalMdFile.getAbsolutePath());
+                        // 使用 lambda 表達式刪除對應的原始 .png 圖片
+                        List<String> oldImageUrls = processedImagesMap.get(originalMdFile.getName());
+                        if (oldImageUrls != null) {
+                            oldImageUrls.forEach(url -> {
+                                File pngFile = new File(url);
+                                if (pngFile.exists()) {
+                                    boolean deleted = pngFile.delete();
+                                    if (deleted) {
+                                        System.out.println("已刪除原始圖片: " + url);
+                                        JOptionPane.showMessageDialog(ancestorWindow, "已刪除原始圖片: " + url);
+                                    } else {
+                                        System.err.println("無法刪除圖片: " + url);
+                                        JOptionPane.showMessageDialog(ancestorWindow, "無法刪除圖片: " + url);
+                                    }
+                                } else {
+                                    System.err.println("找不到圖片: " + url);
+                                }
+                            });
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        JOptionPane.showMessageDialog(ancestorWindow, "Failed to replace markdown file: " + originalMdFile.getName());
+                    }
+                }
+            }
+
+            // 刪除臨時資料夾
             try {
-                Files.delete(tempProcessFolder.toPath());
+                if (tempProcessFolder.exists()) {
+                    deleteDirectoryRecursively(tempProcessFolder.toPath());
+                }
+                if (tempMdFolder.exists()) {
+                    deleteDirectoryRecursively(tempMdFolder.toPath());
+                }
                 JOptionPane.showMessageDialog(ancestorWindow, "Files have been moved and temp folder deleted successfully.");
             } catch (IOException e) {
                 e.printStackTrace();
                 JOptionPane.showMessageDialog(ancestorWindow, "Failed to delete temporary process folder.");
             }
         }
+
+        // 用於查找原始 .md 文件的路徑
+        private String findOriginalMdFile(String fileName) {
+            for (int i = 0; i < inputImageModel.size(); i++) {
+                String inputPath = inputImageModel.getElementAt(i);
+                File inputFile = new File(inputPath);
+                if (inputFile.getName().equals(fileName) && inputFile.getName().endsWith(".md")) {
+                    return inputFile.getAbsolutePath();
+                }
+            }
+            return null; // 如果找不到對應的原始文件
+        }
+
+        // 新增一個方法用來遞歸刪除資料夾
+        private void deleteDirectoryRecursively(Path directory) throws IOException {
+            Files.walk(directory)
+                    .sorted(Comparator.reverseOrder()) // 確保先刪除子文件再刪除父資料夾
+                    .map(Path::toFile)
+                    .forEach(File::delete);
+        }
+
+
     }
 
 
