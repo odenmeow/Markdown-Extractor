@@ -12,6 +12,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -1107,7 +1108,7 @@ public class MarkdownExtractorGUI extends JFrame {
         private JFrame ancestorWindow;
         private JTextField qualityField;
         private Map<String, List<String>> processedImagesMap;  // 儲存每個 .md 文件對應成功處理的圖片 URL
-
+        private JCheckBox onlyTodayCheckBox;  // 新增的 "Only Today" 勾選框
         public Tab4_imageCompressor(JFrame ancestorWindow) {
             this.ancestorWindow = ancestorWindow;
             this.processedImagesMap = new HashMap<>();
@@ -1124,7 +1125,8 @@ public class MarkdownExtractorGUI extends JFrame {
             inputImageList.setTransferHandler(new FileDropHandler(true, inputImageModel));  // 支援拖放圖片
             JScrollPane inputScrollPane = new JScrollPane(inputImageList);
 
-            // 添加清空按鈕
+            // 添加清空按鈕和 Only Today 勾選框
+            onlyTodayCheckBox = new JCheckBox("Only Today", true);
             JButton clearButton = new JButton("Clear Input & Output");
             clearButton.addActionListener(e -> {
                 inputImageModel.clear();  // 清空輸入圖片列表
@@ -1135,6 +1137,7 @@ public class MarkdownExtractorGUI extends JFrame {
 
             JPanel inputPanelTitle = new JPanel(new BorderLayout());
             inputPanelTitle.add(inputLabel, BorderLayout.WEST);
+            inputPanelTitle.add(onlyTodayCheckBox, BorderLayout.CENTER);
             inputPanelTitle.add(clearButton, BorderLayout.EAST);
 
             inputPanel.add(inputPanelTitle, BorderLayout.NORTH);
@@ -1243,6 +1246,8 @@ public class MarkdownExtractorGUI extends JFrame {
                 JOptionPane.showMessageDialog(ancestorWindow, "Please enter valid values for compression level and quality.");
                 return;
             }
+
+            String todayDate = LocalDate.now().toString();
             List<String> noNeedCompressMarkDownFiles = new ArrayList<>();
             for (int i = 0; i < inputImageModel.size(); i++) {
                 String inputPath = inputImageModel.getElementAt(i);
@@ -1258,29 +1263,48 @@ public class MarkdownExtractorGUI extends JFrame {
                         List<String> eachMarkdownOldImageUrls = new ArrayList<>();
 
                         while (markdownMatcher.find()) {
+                            // 將上次匹配到的末尾到此次匹配開始的內容追加到 updatedContent 中
                             updatedContent.append(content, lastIndex, markdownMatcher.start(1));
                             String imageUrl = markdownMatcher.group(1);
 
                             if (imageUrl.endsWith(".png")) {
                                 File imageFile = new File(inputFile.getParent(), imageUrl);
                                 if (imageFile.exists()) {
-                                    compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
-                                    String newImageUrl = imageUrl.replace(".png", ".webp");
-                                    updatedContent.append(newImageUrl);
-                                    // 儲存每個 .md 文件對應成功處理的圖片 URL
-                                    eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
+
+                                    // 僅壓縮今日的圖片
+                                    if (onlyTodayCheckBox.isSelected() && imageUrl.contains(todayDate)) {
+                                        // 壓縮符合條件的圖片並替換為 .webp 格式
+                                        compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
+                                        String newImageUrl = imageUrl.replace(".png", ".webp");
+                                        updatedContent.append(newImageUrl);
+
+                                        // 儲存每個 .md 文件對應成功處理的圖片 URL
+                                        eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
+                                    } else if (!onlyTodayCheckBox.isSelected()) {
+                                        // 如果沒有被打勾 (不用管 todayDate)，壓縮所有的圖片
+                                        compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
+                                        String newImageUrl = imageUrl.replace(".png", ".webp");
+                                        updatedContent.append(newImageUrl);
+                                        // 儲存每個 .md 文件對應成功處理的圖片 URL
+                                        eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
+                                    } else {
+                                        // 如果圖片不符合壓縮條件，保留原始的 URL
+                                        updatedContent.append(imageUrl);
+                                    }
                                 } else {
+                                    // 如果圖片不存在，保留原始的 URL
                                     updatedContent.append(imageUrl);
                                 }
                             } else {
+                                // 如果圖片不是 .png 格式，保留原始的 URL
                                 updatedContent.append(imageUrl);
                             }
 
+                            // 更新 lastIndex 為此次匹配的結束位置
                             lastIndex = markdownMatcher.end(1);
                         }
-                        processedImagesMap.put(inputFile.getName(),eachMarkdownOldImageUrls);
+                        processedImagesMap.put(inputFile.getName(), eachMarkdownOldImageUrls);
                         updatedContent.append(content.substring(lastIndex));
-
 
                         if (!eachMarkdownOldImageUrls.isEmpty() && !outputModel.contains(inputFile.getName())) {
                             outputModel.addElement(inputFile.getName());
@@ -1290,15 +1314,12 @@ public class MarkdownExtractorGUI extends JFrame {
                             }
 
                             File tempMdOutput = new File(tempMdFolder, inputFile.getName());
-                            // 使用 try-with-resources 寫入更新後的 .md 文件
                             try (BufferedWriter writer = Files.newBufferedWriter(tempMdOutput.toPath())) {
                                 writer.write(updatedContent.toString());
                             }
-                        }else{
+                        } else {
                             noNeedCompressMarkDownFiles.add(inputFile.getName());
                         }
-
-
                     } catch (IOException e) {
                         e.printStackTrace();
                         JOptionPane.showMessageDialog(ancestorWindow, "Failed to process markdown file: " + inputPath);
@@ -1307,9 +1328,8 @@ public class MarkdownExtractorGUI extends JFrame {
             }
             StringBuilder completeMsg = new StringBuilder();
             completeMsg.append("Markdown processing completed.\n");
-            noNeedCompressMarkDownFiles.forEach(notProcessFileName -> completeMsg.append(notProcessFileName +  ": 無 png 需壓縮，自動剔除\n"));
+            noNeedCompressMarkDownFiles.forEach(notProcessFileName -> completeMsg.append(notProcessFileName + ": 無任何 png 需壓縮或url不符合今日圖片，已自動剔除\n"));
             JOptionPane.showMessageDialog(ancestorWindow, completeMsg);
-
         }
 
 
@@ -1424,7 +1444,7 @@ public class MarkdownExtractorGUI extends JFrame {
                                     boolean deleted = pngFile.delete();
                                     if (deleted) {
                                         System.out.println("已刪除原始圖片: " + url);
-                                        JOptionPane.showMessageDialog(ancestorWindow, "已刪除原始圖片: " + url);
+
                                     } else {
                                         System.err.println("無法刪除圖片: " + url);
                                         JOptionPane.showMessageDialog(ancestorWindow, "無法刪除圖片: " + url);
@@ -1433,6 +1453,7 @@ public class MarkdownExtractorGUI extends JFrame {
                                     System.err.println("找不到圖片: " + url);
                                 }
                             });
+                            JOptionPane.showMessageDialog(ancestorWindow, "已永久刪除原始圖片: ");
                         }
                     } catch (IOException e) {
                         e.printStackTrace();
