@@ -21,8 +21,8 @@ import java.util.regex.Pattern;
 public class MarkdownExtractorGUI extends JFrame {
 
     // 定義兩個正則表達式：一個針對 Markdown 的 ![]()，另一個針對 HTML 的 <img src="">
-    private static final String MARKDOWN_IMAGE_REGEX = "!\\[.*?\\]\\((.*?\\.(png|jpg|jpeg|gif|bmp))\\)";
-    private static final String HTML_IMAGE_REGEX = "<img\\s+[^>]*src=[\"'](.*?\\.(png|jpg|jpeg|gif|bmp))[\"']";
+    private static final String MARKDOWN_IMAGE_REGEX = "!\\[.*?\\]\\((.*?\\.(png|jpg|jpeg|gif|bmp|webp))\\)";
+    private static final String HTML_IMAGE_REGEX = "<img\\s+[^>]*src=[\"'](.*?\\.(png|jpg|jpeg|gif|bmp|webp))[\"']";
     private static final Pattern MARKDOWN_IMAGE_PATTERN = Pattern.compile(MARKDOWN_IMAGE_REGEX, Pattern.CASE_INSENSITIVE);
     private static final Pattern HTML_IMAGE_PATTERN = Pattern.compile(HTML_IMAGE_REGEX, Pattern.CASE_INSENSITIVE);
     private JButton processButton;
@@ -57,7 +57,7 @@ public class MarkdownExtractorGUI extends JFrame {
         // 初始化 tab4 類別並新增到頁簽
         tab4 = new Tab4_imageCompressor(this);
 
-        tabbedPane.addTab("Images Compressor",tab4.createFourthTab());
+        tabbedPane.addTab("png_Images_Compressor",tab4.createFourthTab());
 
         add(tabbedPane, BorderLayout.CENTER);
 
