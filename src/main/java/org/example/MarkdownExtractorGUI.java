@@ -102,9 +102,14 @@ public class MarkdownExtractorGUI extends JFrame {
         private boolean isInput;  // true for input, false for output
         private DefaultListModel<String> ioFolderModel;
 
-        public FileDropHandler(boolean isInput, DefaultListModel<String> ioFolderModel) {
+        private boolean alert;
+        private String alertString;
+        private Component passedInComponent;
+        public FileDropHandler(boolean isInput, DefaultListModel<String> ioFolderModel, boolean alert, String alertString, Component passedInComponent) {
             this.isInput = isInput;
             this.ioFolderModel = ioFolderModel;
+            this.alert = alert;
+            this.alertString = alertString;
         }
 
         @Override
@@ -135,6 +140,19 @@ public class MarkdownExtractorGUI extends JFrame {
                             if (ioFolderModel.size() > 0) {
                                 ioFolderModel.clear();  // 清除現有資料夾，確保只有一個輸出資料夾
                             }
+                            System.out.println("測試 !"+alert);
+
+                            if (alert){
+                                System.out.println("hihihi");
+                                if (alertString.contains("集中圖片資料夾")) {
+                                    System.out.println("???");
+                                    JOptionPane.showMessageDialog(passedInComponent, alertString + file.getName());
+                                }
+                                else{
+                                    JOptionPane.showMessageDialog(passedInComponent, alertString);
+                                }
+                            }
+                            System.out.println("跳過");
                             ioFolderModel.addElement(file.getAbsolutePath());
                         }
                     }
@@ -187,7 +205,7 @@ public class MarkdownExtractorGUI extends JFrame {
             JLabel inputLabel = new JLabel("Input Folders or Markdown Files:");
             inputFolderModel = new DefaultListModel<>();
             inputFolderList = new JList<>(inputFolderModel);
-            inputFolderList.setTransferHandler(new FileDropHandler(true,inputFolderModel));  // 支援拖放資料夾或文件
+            inputFolderList.setTransferHandler(new FileDropHandler(true,inputFolderModel, false, "", ancestorWindow));  // 支援拖放資料夾或文件
             JScrollPane inputScrollPane = new JScrollPane(inputFolderList);  // 添加 ScrollPane 以支持多個來源
 
             inputPanelTitle.add(inputLabel, BorderLayout.WEST);
@@ -200,7 +218,7 @@ public class MarkdownExtractorGUI extends JFrame {
             JLabel outputLabel = new JLabel("Output Folders:");
             outputFolderModel = new DefaultListModel<>();
             outputFolderList = new JList<>(outputFolderModel);
-            outputFolderList.setTransferHandler(new FileDropHandler(false, outputFolderModel));  // 支援拖放資料夾
+            outputFolderList.setTransferHandler(new FileDropHandler(false, outputFolderModel, false, "", ancestorWindow));  // 支援拖放資料夾
             JScrollPane outputScrollPane = new JScrollPane(outputFolderList);  // 添加 ScrollPane 以支持多個輸出資料夾
 
             outputPanel.add(outputLabel, BorderLayout.NORTH);
@@ -463,13 +481,15 @@ public class MarkdownExtractorGUI extends JFrame {
             JPanel panelGridMain = new JPanel(new GridLayout(1, 2, 10, 10));
             panelGridMain.setBorder(new EmptyBorder(10, 10, 0, 10));
 
+
+
             // Input Folder 左邊
             JPanel inputPanelTitle = new JPanel((new BorderLayout()));
             JPanel inputPanel = new JPanel(new BorderLayout());
             JLabel inputLabel = new JLabel("Input Folders or Markdown Files:");
             inputFolderModel = new DefaultListModel<>();
             inputFolderList = new JList<>(inputFolderModel);
-            inputFolderList.setTransferHandler(new FileDropHandler(true, inputFolderModel));  // 支援拖放資料夾或文件
+            inputFolderList.setTransferHandler(new FileDropHandler(true, inputFolderModel, false, "", ancestorWindow));  // 支援拖放資料夾或文件
             JScrollPane inputScrollPane = new JScrollPane(inputFolderList);  // 添加 ScrollPane 以支持多個來源
 
             // Input Folder  >> 標題文字 :  按鈕  ， 下方為丟檔案進去的區塊
@@ -486,7 +506,7 @@ public class MarkdownExtractorGUI extends JFrame {
             JLabel rootLabel = new JLabel("Root Folder: images & target's root");
             rootFolderModel = new DefaultListModel<>();
             rootFolderList = new JList<>(rootFolderModel);
-            rootFolderList.setTransferHandler(new FileDropHandler(false, rootFolderModel));  // 支援拖放資料夾
+            rootFolderList.setTransferHandler(new FileDropHandler(false, rootFolderModel, false,"", ancestorWindow));  // 支援拖放資料夾
             JScrollPane rootScrollPane = new JScrollPane(rootFolderList);  // 支援多個根目錄
             rootPanel.add(rootLabel, BorderLayout.NORTH);
             rootPanel.add(rootScrollPane, BorderLayout.CENTER);
@@ -497,7 +517,8 @@ public class MarkdownExtractorGUI extends JFrame {
             JLabel imagesLabel = new JLabel("Images Folder:");
             imagesFolderModel = new DefaultListModel<>();
             imagesFolderList = new JList<>(imagesFolderModel);
-            imagesFolderList.setTransferHandler(new FileDropHandler(false, imagesFolderModel));  // 支援拖放資料夾
+            imagesFolderList.setTransferHandler(new FileDropHandler(false, imagesFolderModel, true, ".md 圖片 url 的集中圖片資料夾名稱\n" +
+                    "例: ../../Images 中\n"+ "Images將替換為:\n", ancestorWindow));  // 支援拖放資料夾
             JScrollPane imagesScrollPane = new JScrollPane(imagesFolderList);  // 支援多個圖片資料夾
             imagesPanel.add(imagesLabel, BorderLayout.NORTH);
             imagesPanel.add(imagesScrollPane, BorderLayout.CENTER);
@@ -570,31 +591,7 @@ public class MarkdownExtractorGUI extends JFrame {
                 }
             });
 
-            // click and alert to remove for inputFolderList
-            inputFolderList.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    if (e.getClickCount() == 2) {  // Detect double-click for deletion
-                        int selectedIndex = inputFolderList.getSelectedIndex();
-                        if (selectedIndex != -1) {
-                            String selectedItem = inputFolderModel.getElementAt(selectedIndex);
 
-                            // 彈出確認對話框
-                            int response = JOptionPane.showConfirmDialog(
-                                    null,
-                                    "Remove this item from the target list?\n\n\n" + selectedItem,
-                                    "Confirm removal from List",
-                                    JOptionPane.YES_NO_OPTION
-                            );
-
-                            // 如果使用者選擇了 "YES"，則刪除該項目
-                            if (response == JOptionPane.YES_OPTION) {
-                                inputFolderModel.remove(selectedIndex);
-                            }
-                        }
-                    }
-                }
-            });
 
             return myBasicPanel;
         }
@@ -848,7 +845,7 @@ public class MarkdownExtractorGUI extends JFrame {
             JLabel inputLabel = new JLabel("Input Folders or Markdown Files:");
             inputFolderModel = new DefaultListModel<>();
             inputFolderList = new JList<>(inputFolderModel);
-            inputFolderList.setTransferHandler(new FileDropHandler(true, inputFolderModel));  // 支援拖放資料夾或文件
+            inputFolderList.setTransferHandler(new FileDropHandler(true, inputFolderModel, false, "", ancestorWindow));  // 支援拖放資料夾或文件
             JScrollPane inputScrollPane = new JScrollPane(inputFolderList);  // 添加 ScrollPane 以支持多個來源
             inputPanelTitle.add(inputLabel, BorderLayout.WEST);
 
@@ -1119,10 +1116,13 @@ public class MarkdownExtractorGUI extends JFrame {
 
             // 上方輸入圖片區域
             JPanel inputPanel = new JPanel(new BorderLayout());
-            JLabel inputLabel = new JLabel("Input markdownFiles:");
+            JLabel inputLabel = new JLabel("<html><font color='blue'>Input markdownFiles</font>" +
+                    "<font color='red'>  (not folder)</font>"+
+                    "<font color='blue'> : </font>"+
+                    "</html>");
             inputImageModel = new DefaultListModel<>();
             inputImageList = new JList<>(inputImageModel);
-            inputImageList.setTransferHandler(new FileDropHandler(true, inputImageModel));  // 支援拖放圖片
+            inputImageList.setTransferHandler(new FileDropHandler(true, inputImageModel, false, "", ancestorWindow));  // 支援拖放圖片
             JScrollPane inputScrollPane = new JScrollPane(inputImageList);
 
             // 添加清空按鈕和 Only Today 勾選框
@@ -1154,7 +1154,7 @@ public class MarkdownExtractorGUI extends JFrame {
             // 輸出資料夾列表，支持拖放功能，使用 JList 作為輸出資料夾，限制高度
             outputListModel = new DefaultListModel<>();
             outputFolderList = new JList<>(outputListModel);
-            outputFolderList.setTransferHandler(new FileDropHandler(false, outputListModel));  // 支援拖放資料夾
+            outputFolderList.setTransferHandler(new FileDropHandler(false, outputListModel, false, "", ancestorWindow));  // 支援拖放資料夾
 
             // 限制 JList 的顯示行數和大小
             outputFolderList.setVisibleRowCount(1); // 設定可見行數，保持高度一致
@@ -1292,6 +1292,7 @@ public class MarkdownExtractorGUI extends JFrame {
                                         updatedContent.append(imageUrl);
                                     }
                                 } else {
+                                    System.out.println("沒找到圖");
                                     // 如果圖片不存在，保留原始的 URL
                                     updatedContent.append(imageUrl);
                                 }
