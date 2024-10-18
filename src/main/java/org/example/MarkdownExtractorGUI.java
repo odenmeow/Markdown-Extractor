@@ -8,9 +8,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.*;
 import java.time.LocalDate;
 import java.util.*;
@@ -1265,6 +1263,67 @@ public class MarkdownExtractorGUI extends JFrame {
             myBasicPanel.add(outputScrollPane, gbc);
 
 
+
+
+            // 追加功能            < ---------------------Add md Files By Git ------------------------>
+            // 添加 addByGit 按鈕
+            JButton addByGitButton = new JButton("Add By Git");
+            addByGitButton.addActionListener(e -> {
+                String gitRootPath = JOptionPane.showInputDialog(ancestorWindow, "Enter the path to the top-level folder containing .git:");
+                if (gitRootPath != null && !gitRootPath.trim().isEmpty()) {
+                    File gitRoot = new File(gitRootPath);
+                    if (gitRoot.exists() && gitRoot.isDirectory()) {
+                        try {
+                            // 使用 git 命令查詢今日有異動的 .md 文件
+                            ProcessBuilder builder = new ProcessBuilder("git", "-C", gitRootPath, "diff", "--name-only", "--diff-filter=AM", "--since=midnight");
+                            builder.directory(gitRoot);
+                            Process process = builder.start();
+                            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                            String line;
+                            boolean foundAnyMdFile = false;  // 標誌是否找到任何 .md 文件
+
+                            while ((line = reader.readLine()) != null) {
+                                if (line.endsWith(".md")) {
+                                    File mdFile = new File(gitRoot, line);
+                                    if (mdFile.exists()) {
+                                        // 檢查是否已經存在於 inputImageModel 中
+                                        if (!inputImageModel.contains(mdFile.getAbsolutePath())) {
+                                            inputImageModel.addElement(mdFile.getAbsolutePath());
+                                            foundAnyMdFile = true;
+                                        }
+                                    }
+                                }
+                            }
+
+                            process.waitFor();
+
+                            // 如果沒有找到任何 .md 文件，顯示提示信息
+                            if (!foundAnyMdFile) {
+                                JOptionPane.showMessageDialog(ancestorWindow, "No modified .md files found for today.");
+                            }
+
+                        } catch (IOException | InterruptedException ex) {
+                            ex.printStackTrace();
+                            JOptionPane.showMessageDialog(ancestorWindow, "Failed to fetch modified .md files from git repository.");
+                        }
+                    } else {
+                        JOptionPane.showMessageDialog(ancestorWindow, "Invalid path or directory does not exist.");
+                    }
+                }
+            });
+
+            // 修改 Input Panel，添加 addByGit 按鈕
+            inputPanelTitle.add(addByGitButton, BorderLayout.EAST);
+
+            // 如果原來已經有加入 clearButton 的位置，則將 clearButton 和 addByGitButton 放入一個新的 JPanel
+            JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            buttonPanel.add(addByGitButton);
+            buttonPanel.add(clearButton);
+
+            // 修改 inputPanelTitle 中的按鈕位置
+            inputPanelTitle.add(buttonPanel, BorderLayout.EAST);
+
+            // 追加功能 end </ ---------------------Add md Files By Git ------------------------>
 
             return myBasicPanel;
         }
