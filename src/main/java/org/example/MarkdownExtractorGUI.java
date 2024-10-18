@@ -1112,8 +1112,44 @@ public class MarkdownExtractorGUI extends JFrame {
         }
 
         private Component createFourthTab() {
-            JPanel myBasicPanel = new JPanel(new BorderLayout());
 
+            //               < GridLayout 只能三等份，不能按ˋ比例設計 >
+            // 使用 GridLayout 才能均分，同步壓縮空間 ，否則 BorderLayout 會有不同組合之反應。
+            // 例如 North + CENTER + south 會導致 CENTER 優先被壓縮。  N +S 會導致 S 優先被壓縮。
+            // JPanel myBasicPanel = new JPanel(new GridLayout(3, 1, 10, 10));
+            // myBasicPanel.setBorder(new EmptyBorder(10,10,0,10));
+            //              < /GridLayout 只能三等份，不能按ˋ比例設計 >
+
+
+            //              < GridBagLayout ，可以自己設定百分比 >
+            JPanel myBasicPanel = new JPanel(new GridBagLayout());
+            GridBagConstraints gbc = new GridBagConstraints();
+
+            //            // 設定第一個元件 (占 40% 垂直方向空間)
+            //            gbc.gridx = 0;       // 設置列位置，只有一列所以是0
+            //            gbc.gridy = 0;       // 設置行位置，第一行
+            //            gbc.weightx = 1.0;   // 水平方向佔滿（因為只有一列，佔比為 100%）
+            //            gbc.weighty = 0.4;   // 垂直方向佔比 40%
+            //            gbc.fill = GridBagConstraints.BOTH;  // 填滿水平方向和垂直方向
+            //            myBasicPanel.add(component1, gbc);
+            //
+            //            // 設定第二個元件 (占 20% 垂直方向空間)
+            //            gbc.gridy = 1;       // 設置行位置，第二行
+            //            gbc.weighty = 0.2;   // 垂直方向佔比 20%
+            //            myBasicPanel.add(component2, gbc);
+            //
+            //            // 設定第三個元件 (占 40% 垂直方向空間)
+            //            gbc.gridy = 2;       // 設置行位置，第三行
+            //            gbc.weighty = 0.4;   // 垂直方向佔比 40%
+            //            myBasicPanel.add(component3, gbc);
+            //              < /GridBagLayout ，可以自己設定百分比 >
+
+
+
+
+
+
+            //              <Input markdownFiles + OnlyToday + Clear + scrollPane>
             // 上方輸入圖片區域
             JPanel inputPanel = new JPanel(new BorderLayout());
             JLabel inputLabel = new JLabel("<html><font color='blue'>Input markdownFiles</font>" +
@@ -1142,16 +1178,31 @@ public class MarkdownExtractorGUI extends JFrame {
 
             inputPanel.add(inputPanelTitle, BorderLayout.NORTH);
             inputPanel.add(inputScrollPane, BorderLayout.CENTER);
-            myBasicPanel.add(inputPanel, BorderLayout.NORTH);
+            // myBasicPanel.add(inputPanel, BorderLayout.NORTH);
+
+            gbc.gridx = 0;       // 設置列位置，只有一列所以是0
+            gbc.gridy = 0;       // 設置行位置，第一行
+            gbc.weightx = 1.0;   // 水平方向佔滿（因為只有一列，佔比為 100%）
+            gbc.weighty = 0.4;   // 垂直方向佔比 40%
+            gbc.fill = GridBagConstraints.BOTH;  // 填滿水平方向和垂直方向
+            myBasicPanel.add(inputPanel, gbc);
+
+
+            //              </Input markdownFiles + OnlyToday + Clear + scrollPane>
+
+
+
+
+
 
             // 下方輸出設定區域
-            JPanel bottomPanel = new JPanel(new BorderLayout());
+            JPanel settingZonePanel = new JPanel(new BorderLayout());
 
             // 上半部分：輸出資料夾選擇區域
-            JPanel outputFolderPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-            JLabel outputLabel = new JLabel("Central Img Folder:");
+            JPanel centralImgFolderPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            JLabel centralImgText = new JLabel("Central Img Folder:");
 
-            // 輸出資料夾列表，支持拖放功能，使用 JList 作為輸出資料夾，限制高度
+            // 資料夾列表，支持拖放功能，使用 JList 作為資料夾項目展示，限制高度
             outputListModel = new DefaultListModel<>();
             outputFolderList = new JList<>(outputListModel);
             outputFolderList.setTransferHandler(new FileDropHandler(false, outputListModel, false, "", ancestorWindow));  // 支援拖放資料夾
@@ -1159,15 +1210,15 @@ public class MarkdownExtractorGUI extends JFrame {
             // 限制 JList 的顯示行數和大小
             outputFolderList.setVisibleRowCount(1); // 設定可見行數，保持高度一致
             JScrollPane outputFolderScrollPane = new JScrollPane(outputFolderList);
-            outputFolderScrollPane.setPreferredSize(new Dimension(500, 30)); // 設置首選尺寸來限制高度和寬度
+            outputFolderScrollPane.setPreferredSize(new Dimension(500, 40)); // 設置首選尺寸來限制高度和寬度
             outputFolderScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);  // 不顯示水平捲軸
             outputFolderScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);  // 不顯示垂直捲軸
 
-            outputFolderPanel.add(outputLabel);
-            outputFolderPanel.add(outputFolderScrollPane);
+            centralImgFolderPanel.add(centralImgText);
+            centralImgFolderPanel.add(outputFolderScrollPane);
 
-            // 添加上半部分到 bottomPanel 的上方
-            bottomPanel.add(outputFolderPanel, BorderLayout.NORTH);
+            // 添加上半部分到 settingZonePanel 的上方
+            settingZonePanel.add(centralImgFolderPanel, BorderLayout.NORTH);
 
             // 下半部分：壓縮級別和處理按鈕
             JPanel compressionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -1184,8 +1235,8 @@ public class MarkdownExtractorGUI extends JFrame {
             compressionPanel.add(compressionLevelField);
             compressionPanel.add(processButton);
 
-            // 添加下半部分到 bottomPanel 的中間
-            bottomPanel.add(compressionPanel, BorderLayout.CENTER);
+            // 添加下半部分到 settingZonePanel 的中間
+            settingZonePanel.add(compressionPanel, BorderLayout.CENTER);
 
             // 監聽處理按鈕
             processButton.addActionListener(new ActionListener() {
@@ -1200,9 +1251,20 @@ public class MarkdownExtractorGUI extends JFrame {
             outputList = new JList<>(outputModel);
             JScrollPane outputScrollPane = new JScrollPane(outputList);
 
-            // output 欣賞區 放下方( processMarkdown 之上)
-            bottomPanel.add(outputScrollPane, BorderLayout.SOUTH);
-            myBasicPanel.add(bottomPanel, BorderLayout.CENTER);
+
+            // myBasicPanel.add(settingZonePanel,BorderLayout.CENTER);
+            // myBasicPanel.add(outputScrollPane, BorderLayout.SOUTH);
+            // 設定第二個元件 (占 20% 垂直方向空間)
+            gbc.gridy = 1;       // 設置行位置，第二行
+            gbc.weighty = 0.2;   // 垂直方向佔比 20%
+            myBasicPanel.add(settingZonePanel, gbc);
+
+            // 設定第三個元件 (占 40% 垂直方向空間)
+            gbc.gridy = 2;       // 設置行位置，第三行
+            gbc.weighty = 0.4;   // 垂直方向佔比 40%
+            myBasicPanel.add(outputScrollPane, gbc);
+
+
 
             return myBasicPanel;
         }
