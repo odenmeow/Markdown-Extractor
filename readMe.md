@@ -15,3 +15,11 @@
    > 提供 最上層 root folder = Git 倉儲所在，自動加入有異動的筆記，
 
 4. 調整 UI 圖層BUG
+
+# APPusage : MarkDownExtractor.bat
+
+提供此腳本可快速開此APP，需搭配 .jar ，因此要先產出.jar。
+
+如果有自行更改，請 Google 搜尋 IDEA artifact .jar 如何產生。
+
+
