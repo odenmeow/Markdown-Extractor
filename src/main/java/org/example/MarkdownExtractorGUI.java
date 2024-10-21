@@ -1302,9 +1302,31 @@ public class MarkdownExtractorGUI extends JFrame {
                                 JOptionPane.showMessageDialog(ancestorWindow, "No modified .md files found for today.");
                             }
 
+                            // 使用 git status --short 命令查詢未追蹤的 .md 文件
+                            ProcessBuilder untrackedBuilder = new ProcessBuilder("git", "-C", gitRootPath, "ls-files", "--others", "--exclude-standard", "*.md");
+                            untrackedBuilder.directory(gitRoot);
+                            Process untrackedProcess = untrackedBuilder.start();
+                            BufferedReader untrackedReader = new BufferedReader(new InputStreamReader(untrackedProcess.getInputStream()));
+                            String untrackedLine;
+
+                            while ((untrackedLine = untrackedReader.readLine()) != null) {
+                                File mdFile = new File(gitRoot, untrackedLine);
+                                if (mdFile.exists() && !inputImageModel.contains(mdFile.getAbsolutePath())) {
+                                    inputImageModel.addElement(mdFile.getAbsolutePath());
+                                    foundAnyMdFile = true;
+                                }
+                            }
+
+                            untrackedProcess.waitFor();
+
+                            // 如果還是沒有找到任何 .md 文件，顯示提示信息
+                            if (!foundAnyMdFile) {
+                                JOptionPane.showMessageDialog(ancestorWindow, "No modified or untracked .md files found.");
+                            }
+
                         } catch (IOException | InterruptedException ex) {
                             ex.printStackTrace();
-                            JOptionPane.showMessageDialog(ancestorWindow, "Failed to fetch modified .md files from git repository.");
+                            JOptionPane.showMessageDialog(ancestorWindow, "Failed to fetch modified or untracked .md files from git repository.");
                         }
                     } else {
                         JOptionPane.showMessageDialog(ancestorWindow, "Invalid path or directory does not exist.");
