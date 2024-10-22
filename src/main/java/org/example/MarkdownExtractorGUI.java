@@ -2,6 +2,8 @@ package org.example;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.event.ListDataEvent;
+import javax.swing.event.ListDataListener;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.event.ActionEvent;
@@ -138,7 +140,6 @@ public class MarkdownExtractorGUI extends JFrame {
                             if (ioFolderModel.size() > 0) {
                                 ioFolderModel.clear();  // 清除現有資料夾，確保只有一個輸出資料夾
                             }
-                            System.out.println("測試 !"+alert);
 
                             if (alert){
                                 System.out.println("hihihi");
@@ -1095,18 +1096,65 @@ public class MarkdownExtractorGUI extends JFrame {
     private class Tab4_imageCompressor extends Component {
         private DefaultListModel<String> inputImageModel;  // 支援拖曳輸入圖片
         private JList<String> inputImageList;
-        private JList<String> outputFolderList;  // 輸出資料夾列表
-        private DefaultListModel<String> outputListModel;  // 輸出資料夾的模型
+
+        private DefaultListModel<String> outputListModel = new DefaultListModel<>() ;  // 輸出資料夾的模型
+        private JList<String> outputFolderList = new JList<>(outputListModel);;  // 輸出資料夾列表
         private JTextField compressionLevelField;  // 壓縮級別
-        private DefaultListModel<String> outputModel;  // 顯示壓縮後的圖片
+        private DefaultListModel<String> outputModel = new DefaultListModel<>() ;  // 顯示壓縮後的圖片
         private JList<String> outputList;  // 顯示輸出圖片列表
         private JFrame ancestorWindow;
         private JTextField qualityField;
         private Map<String, List<String>> processedImagesMap;  // 儲存每個 .md 文件對應成功處理的圖片 URL
         private JCheckBox onlyTodayCheckBox;  // 新增的 "Only Today" 勾選框
+        private static final String CONFIG_FILE = "config.properties";  // 保存設定的文件名
+        private String defaultGitRootPath;  // 保存預設 Git 根目錄
+        private String defaultImgFolderPath;  // 保存預設 Central Img Folder 路徑
+        private JCheckBox centralImgFolderSaveAsDefaultBox;
+
+        // 載入 config.properties 文件
+        private void loadConfig() {
+            Properties props = new Properties();
+            try (FileInputStream in = new FileInputStream(CONFIG_FILE)) {
+                props.load(in);
+                defaultGitRootPath = props.getProperty("gitRootPath", ""); // 默認為空字符串
+                defaultImgFolderPath = props.getProperty("imgFolderPath", ""); // 默認為空字符串
+
+                // 如果 imgFolderPath 有值，將其設置到 outputListModel 中
+                if (!defaultImgFolderPath.isEmpty()) {
+                    outputListModel.addElement(defaultImgFolderPath);
+                    System.out.println("已添加");
+                    outputFolderList.revalidate();
+                    outputFolderList.repaint();
+                }
+            } catch (IOException e) {
+                System.out.println("Configuration file not found, using defaults.");
+            }
+        }
+
+
+        // 保存設定到 config.properties 文件
+        private void saveConfig(String key, String value) {
+            Properties props = new Properties();
+            // 讀取現有的配置
+            try (FileInputStream in = new FileInputStream(CONFIG_FILE)) {
+                props.load(in);
+            } catch (IOException e) {
+                // 文件不存在時，創建一個新的 properties
+                System.out.println("Configuration file not found, creating new one.");
+            }
+            // 更新或添加新的設定項
+            props.setProperty(key, value);
+            // 保存所有配置
+            try (FileOutputStream out = new FileOutputStream(CONFIG_FILE)) {
+                props.store(out, "User Configuration");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
         public Tab4_imageCompressor(JFrame ancestorWindow) {
             this.ancestorWindow = ancestorWindow;
             this.processedImagesMap = new HashMap<>();
+            loadConfig(); // 載入設定
         }
 
         private Component createFourthTab() {
@@ -1183,6 +1231,7 @@ public class MarkdownExtractorGUI extends JFrame {
             gbc.weightx = 1.0;   // 水平方向佔滿（因為只有一列，佔比為 100%）
             gbc.weighty = 0.4;   // 垂直方向佔比 40%
             gbc.fill = GridBagConstraints.BOTH;  // 填滿水平方向和垂直方向
+            gbc.insets = new Insets(3, 10, 3, 5); // 添加內邊距 (上, 左, 下, 右)
             myBasicPanel.add(inputPanel, gbc);
 
 
@@ -1194,16 +1243,50 @@ public class MarkdownExtractorGUI extends JFrame {
 
 
             // 下方輸出設定區域
-            JPanel settingZonePanel = new JPanel(new BorderLayout());
-
+            JPanel settingZonePanel = new JPanel(new GridBagLayout());
+            GridBagConstraints settingZoneGbc = new GridBagConstraints();
             // 上半部分：輸出資料夾選擇區域
-            JPanel centralImgFolderPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+
+            JPanel centralImgFolderPanel = new JPanel(new GridBagLayout());
+            // 1,2
+            // 3,4   ， GridBagLayout，希望 1 = Central Img Folder ，2=save as default
+            // 3+4 跨行 合併後，內容 outputFolderScrollPane 置中
+
+            // 無須再創造，可以沿用上面的 gbc (當作儲存參數的物件能重用)，但避免 跟別人互相 cover 因此又創建
+            GridBagConstraints imgGbc = new GridBagConstraints();
             JLabel centralImgText = new JLabel("Central Img Folder:");
+            centralImgFolderSaveAsDefaultBox = new JCheckBox("save", true);
 
             // 資料夾列表，支持拖放功能，使用 JList 作為資料夾項目展示，限制高度
-            outputListModel = new DefaultListModel<>();
-            outputFolderList = new JList<>(outputListModel);
+
             outputFolderList.setTransferHandler(new FileDropHandler(false, outputListModel, false, "", ancestorWindow));  // 支援拖放資料夾
+
+            // 當 outputFolderList 有變化時保存到配置文件，使用這個才可以每次都保存 而不是有變化才保存 。例如 addListSelectionListener ( 第一次丟入資料夾 不算是有變化 )  。
+            outputListModel.addListDataListener(new ListDataListener() {
+                @Override
+                public void intervalAdded(ListDataEvent e) {
+                    saveIfNecessary();
+                }
+
+                @Override
+                public void intervalRemoved(ListDataEvent e) {
+                    saveIfNecessary();
+                }
+
+                @Override
+                public void contentsChanged(ListDataEvent e) {
+                    saveIfNecessary();
+                }
+
+                private void saveIfNecessary() {
+                    // 只有當勾選框被勾選且列表不為空的情況下，才保存配置
+                    if (!outputListModel.isEmpty() && centralImgFolderSaveAsDefaultBox.isSelected()) {
+                        String selectedFolderPath = outputListModel.getElementAt(0);
+                        saveConfig("imgFolderPath", selectedFolderPath);
+                        System.out.println("已經保存了");
+                    }
+                }
+            });
 
             // 限制 JList 的顯示行數和大小
             outputFolderList.setVisibleRowCount(1); // 設定可見行數，保持高度一致
@@ -1212,11 +1295,73 @@ public class MarkdownExtractorGUI extends JFrame {
             outputFolderScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);  // 不顯示水平捲軸
             outputFolderScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_NEVER);  // 不顯示垂直捲軸
 
-            centralImgFolderPanel.add(centralImgText);
-            centralImgFolderPanel.add(outputFolderScrollPane);
+
+            // 設定元件 1 Central Img Folder 文字部分 (30% 垂直方向空間)
+            imgGbc.gridx = 0;       // col 0
+            imgGbc.gridy = 0;       // row 0
+            imgGbc.weightx = 1.0;   // 水平方向佔滿
+            imgGbc.weighty = 0.3;   // 垂直方向佔比 30%
+            imgGbc.gridwidth = 1;   // 不合併列
+            imgGbc.gridheight = 1;  // 不合併行
+            imgGbc.fill = GridBagConstraints.BOTH;
+            // 下面是為了避免 Central 的文字 沒有對齊，把 5 改 0 就能理解。
+            imgGbc.insets = new Insets(0, 5, 0, 0); // 添加內邊距 (上, 左, 下, 右)
+            centralImgFolderPanel.add(centralImgText, imgGbc);
+
+            // 設定元件 2 saveAsDefault 部分 (30% 垂直方向空間)
+            imgGbc.gridx = 0;       // col 0
+            imgGbc.gridy = 1;       // row 1
+            imgGbc.weightx = 1.0;   // 水平方向佔滿
+            imgGbc.weighty = 0.3;   // 垂直方向佔比 30%
+            imgGbc.gridwidth = 1;   // 不合併列
+            imgGbc.gridheight = 1;  // 不合併行
+            imgGbc.fill = GridBagConstraints.BOTH;
+            imgGbc.insets = new Insets(0, 0, 0, 0); // 添加內邊距 (上, 左, 下, 右)
+
+            // 增加讀取的功能
+            JButton centralImgFolderReadBtn = new JButton("read");
+            centralImgFolderReadBtn.addActionListener((event) -> {
+                loadConfig(); // 重新讀取配置文件
+                if (!defaultImgFolderPath.isEmpty()) {
+                    outputListModel.clear();
+                    outputListModel.addElement(defaultImgFolderPath);
+                    outputFolderList.revalidate();
+                    outputFolderList.repaint();
+                }
+                JOptionPane.showMessageDialog(ancestorWindow, "Successfully loaded default image folder path.");
+            });
+            JPanel saveAndReadBlock = new JPanel(new GridBagLayout());
+            GridBagConstraints saveAndReadGbc = new GridBagConstraints();
+            saveAndReadGbc.gridx = 0;
+            saveAndReadGbc.gridy = 0;
+            saveAndReadBlock.add(centralImgFolderSaveAsDefaultBox, saveAndReadGbc);
+            saveAndReadGbc.gridx = 1;
+            saveAndReadBlock.add(centralImgFolderReadBtn, saveAndReadGbc);
+            centralImgFolderPanel.add(saveAndReadBlock, imgGbc);
+
+            // 設定元件 outputFolderScrollPane 放置於右側 (合併行 0 和 1)
+            imgGbc.gridx = 1;           // col 1
+            imgGbc.gridy = 0;           // row 0
+            imgGbc.weightx = 1.0;       // 水平方向佔滿
+            imgGbc.weighty = 0.4;       // 垂直方向佔比 40% （兩行加起來的比例，總共是60%）
+            imgGbc.gridwidth = 1;       // 不合併列
+            imgGbc.gridheight = 2;      // 合併行 0 和行 1
+            imgGbc.fill = GridBagConstraints.BOTH;  // 填滿水平方向和垂直方向
+            imgGbc.anchor = GridBagConstraints.CENTER;  // 確保內容置中顯示
+            imgGbc.insets = new Insets(0, 5, 0, 0); // 添加內邊距 (上, 左, 下, 右)
+            centralImgFolderPanel.add(outputFolderScrollPane, imgGbc);
+
+
+
+
+
+
 
             // 添加上半部分到 settingZonePanel 的上方
-            settingZonePanel.add(centralImgFolderPanel, BorderLayout.NORTH);
+            settingZoneGbc.gridx = 0;
+            settingZoneGbc.gridy = 0;
+            settingZoneGbc.fill = GridBagConstraints.BOTH;
+            settingZonePanel.add(centralImgFolderPanel, settingZoneGbc);
 
             // 下半部分：壓縮級別和處理按鈕
             JPanel compressionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -1234,7 +1379,12 @@ public class MarkdownExtractorGUI extends JFrame {
             compressionPanel.add(processButton);
 
             // 添加下半部分到 settingZonePanel 的中間
-            settingZonePanel.add(compressionPanel, BorderLayout.CENTER);
+            settingZoneGbc.gridx = 0;
+            settingZoneGbc.gridy = 1;
+            settingZoneGbc.anchor = GridBagConstraints.WEST;
+            settingZoneGbc.fill = GridBagConstraints.BOTH;
+
+            settingZonePanel.add(compressionPanel, settingZoneGbc);
 
             // 監聽處理按鈕
             processButton.addActionListener(new ActionListener() {
@@ -1245,7 +1395,6 @@ public class MarkdownExtractorGUI extends JFrame {
             });
 
             // 輸出圖片顯示區
-            outputModel = new DefaultListModel<>();
             outputList = new JList<>(outputModel);
             JScrollPane outputScrollPane = new JScrollPane(outputList);
 
@@ -1255,11 +1404,14 @@ public class MarkdownExtractorGUI extends JFrame {
             // 設定第二個元件 (占 20% 垂直方向空間)
             gbc.gridy = 1;       // 設置行位置，第二行
             gbc.weighty = 0.2;   // 垂直方向佔比 20%
+            // settingZonePanel.setBorder(BorderFactory.createLineBorder(Color.BLUE, 2));
+            gbc.insets = new Insets(0, 0, 0, 0); // 添加內邊距 (上, 左, 下, 右)
             myBasicPanel.add(settingZonePanel, gbc);
 
             // 設定第三個元件 (占 40% 垂直方向空間)
             gbc.gridy = 2;       // 設置行位置，第三行
             gbc.weighty = 0.4;   // 垂直方向佔比 40%
+            gbc.insets = new Insets(0, 10, 3, 5); // 添加內邊距 (上, 左, 下, 右)
             myBasicPanel.add(outputScrollPane, gbc);
 
 
@@ -1269,83 +1421,98 @@ public class MarkdownExtractorGUI extends JFrame {
             // 添加 addByGit 按鈕
             JButton addByGitButton = new JButton("Add By Git");
             addByGitButton.addActionListener(e -> {
-                String gitRootPath = JOptionPane.showInputDialog(ancestorWindow, "Enter the path to the top-level folder containing .git:");
-                if (gitRootPath != null && !gitRootPath.trim().isEmpty()) {
-                    File gitRoot = new File(gitRootPath);
-                    if (gitRoot.exists() && gitRoot.isDirectory()) {
-                        try {
-                            // 使用 git 命令查詢今日有異動的 .md 文件
-                            ProcessBuilder builder = new ProcessBuilder("git", "-C", gitRootPath, "diff", "--name-only", "--diff-filter=AM", "--since=midnight");
-                            builder.directory(gitRoot);
-                            Process process = builder.start();
-                            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                            String line;
-                            boolean foundAnyMdFile = false;  // 標誌是否找到任何 .md 文件
+                JTextField gitRootPathField = new JTextField(30);
+                gitRootPathField.setText(defaultGitRootPath);
 
-                            while ((line = reader.readLine()) != null) {
-                                if (line.endsWith(".md")) {
-                                    File mdFile = new File(gitRoot, line);
-                                    if (mdFile.exists()) {
-                                        // 檢查是否已經存在於 inputImageModel 中
-                                        if (!inputImageModel.contains(mdFile.getAbsolutePath())) {
-                                            inputImageModel.addElement(mdFile.getAbsolutePath());
-                                            foundAnyMdFile = true;
+                JCheckBox saveCheckBox = new JCheckBox("Save this path as default");
+                saveCheckBox.setSelected(true);  // 默認選中
+
+                JPanel panel = new JPanel(new BorderLayout(5, 5));
+                panel.add(new JLabel("Enter the path to the top-level folder containing .git:"), BorderLayout.NORTH);
+                panel.add(gitRootPathField, BorderLayout.CENTER);
+                panel.add(saveCheckBox, BorderLayout.SOUTH);
+
+                int result = JOptionPane.showConfirmDialog(ancestorWindow, panel, "Add By Git",
+                        JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+
+                if (result == JOptionPane.OK_OPTION) {
+                    String gitRootPath = gitRootPathField.getText();
+                    if (gitRootPath != null && !gitRootPath.trim().isEmpty()) {
+                        File gitRoot = new File(gitRootPath);
+                        if (gitRoot.exists() && gitRoot.isDirectory()) {
+                            // 如果選中保存，則保存 Git 路徑
+                            if (saveCheckBox.isSelected()) {
+                                saveConfig("gitRootPath",gitRootPath);
+                                defaultGitRootPath = gitRootPath;  // 更新當前的 Git 路徑
+                            }
+
+                            try {
+                                // 使用 git 命令查詢今日有異動的 .md 文件
+                                ProcessBuilder builder = new ProcessBuilder("git", "-C", gitRootPath, "diff", "--name-only", "--diff-filter=AM", "--since=midnight");
+                                builder.directory(gitRoot);
+                                Process process = builder.start();
+                                BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                                String line;
+                                boolean foundAnyMdFile = false;
+
+                                while ((line = reader.readLine()) != null) {
+                                    if (line.endsWith(".md")) {
+                                        File mdFile = new File(gitRoot, line);
+                                        if (mdFile.exists()) {
+                                            // 檢查是否已經存在於 inputImageModel 中
+                                            if (!inputImageModel.contains(mdFile.getAbsolutePath())) {
+                                                inputImageModel.addElement(mdFile.getAbsolutePath());
+                                                foundAnyMdFile = true;
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            process.waitFor();
+                                process.waitFor();
 
-                            // 如果沒有找到任何 .md 文件，顯示提示信息
-                            if (!foundAnyMdFile) {
-                                JOptionPane.showMessageDialog(ancestorWindow, "No modified .md files found for today.");
-                            }
-
-                            // 使用 git status --short 命令查詢未追蹤的 .md 文件
-                            ProcessBuilder untrackedBuilder = new ProcessBuilder("git", "-C", gitRootPath, "ls-files", "--others", "--exclude-standard", "*.md");
-                            untrackedBuilder.directory(gitRoot);
-                            Process untrackedProcess = untrackedBuilder.start();
-                            BufferedReader untrackedReader = new BufferedReader(new InputStreamReader(untrackedProcess.getInputStream()));
-                            String untrackedLine;
-
-                            while ((untrackedLine = untrackedReader.readLine()) != null) {
-                                File mdFile = new File(gitRoot, untrackedLine);
-                                if (mdFile.exists() && !inputImageModel.contains(mdFile.getAbsolutePath())) {
-                                    inputImageModel.addElement(mdFile.getAbsolutePath());
-                                    foundAnyMdFile = true;
+                                // 如果沒有找到任何 .md 文件，顯示提示信息
+                                if (!foundAnyMdFile) {
+                                    JOptionPane.showMessageDialog(ancestorWindow, "No modified .md files found for today.");
                                 }
+
+                                // 使用 git status --short 命令查詢未追蹤的 .md 文件
+                                ProcessBuilder untrackedBuilder = new ProcessBuilder("git", "-C", gitRootPath, "ls-files", "--others", "--exclude-standard", "*.md");
+                                untrackedBuilder.directory(gitRoot);
+                                Process untrackedProcess = untrackedBuilder.start();
+                                BufferedReader untrackedReader = new BufferedReader(new InputStreamReader(untrackedProcess.getInputStream()));
+                                String untrackedLine;
+
+                                while ((untrackedLine = untrackedReader.readLine()) != null) {
+                                    File mdFile = new File(gitRoot, untrackedLine);
+                                    if (mdFile.exists() && !inputImageModel.contains(mdFile.getAbsolutePath())) {
+                                        inputImageModel.addElement(mdFile.getAbsolutePath());
+                                        foundAnyMdFile = true;
+                                    }
+                                }
+
+                                untrackedProcess.waitFor();
+
+                                // 如果還是沒有找到任何 .md 文件，顯示提示信息
+                                if (!foundAnyMdFile) {
+                                    JOptionPane.showMessageDialog(ancestorWindow, "No modified or untracked .md files found.");
+                                }
+
+                            } catch (IOException | InterruptedException ex) {
+                                ex.printStackTrace();
+                                JOptionPane.showMessageDialog(ancestorWindow, "Failed to fetch modified or untracked .md files from git repository.");
                             }
-
-                            untrackedProcess.waitFor();
-
-                            // 如果還是沒有找到任何 .md 文件，顯示提示信息
-                            if (!foundAnyMdFile) {
-                                JOptionPane.showMessageDialog(ancestorWindow, "No modified or untracked .md files found.");
-                            }
-
-                        } catch (IOException | InterruptedException ex) {
-                            ex.printStackTrace();
-                            JOptionPane.showMessageDialog(ancestorWindow, "Failed to fetch modified or untracked .md files from git repository.");
+                        } else {
+                            JOptionPane.showMessageDialog(ancestorWindow, "Invalid path or directory does not exist.");
                         }
-                    } else {
-                        JOptionPane.showMessageDialog(ancestorWindow, "Invalid path or directory does not exist.");
                     }
                 }
             });
 
-            // 修改 Input Panel，添加 addByGit 按鈕
-            inputPanelTitle.add(addByGitButton, BorderLayout.EAST);
-
-            // 如果原來已經有加入 clearButton 的位置，則將 clearButton 和 addByGitButton 放入一個新的 JPanel
+            // 修改 inputPanelTitle 中的按鈕位置
             JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
             buttonPanel.add(addByGitButton);
             buttonPanel.add(clearButton);
-
-            // 修改 inputPanelTitle 中的按鈕位置
             inputPanelTitle.add(buttonPanel, BorderLayout.EAST);
-
-            // 追加功能 end </ ---------------------Add md Files By Git ------------------------>
 
             return myBasicPanel;
         }
