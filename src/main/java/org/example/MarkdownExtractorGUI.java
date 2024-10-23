@@ -12,11 +12,18 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.*;
 import java.nio.file.*;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.awt.Desktop;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 public class MarkdownExtractorGUI extends JFrame {
 
@@ -1204,6 +1211,36 @@ public class MarkdownExtractorGUI extends JFrame {
                     "</html>");
             inputImageModel = new DefaultListModel<>();
             inputImageList = new JList<>(inputImageModel);
+
+            // 創建輸入圖片列表
+            inputImageModel = new DefaultListModel<>();
+            inputImageList = new JList<>(inputImageModel);
+
+            // 添加雙擊監聽器以打開選中的檔案
+            inputImageList.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (e.getClickCount() == 2) { // 檢測雙擊事件
+                        int index = inputImageList.locationToIndex(e.getPoint()); // 獲取被雙擊項目的索引
+                        if (index != -1) {
+                            String selectedFilePath = inputImageModel.getElementAt(index);
+                            File file = new File(selectedFilePath);
+                            if (file.exists() && file.isFile()) {
+                                try {
+                                    // 使用 Desktop 類打開文件
+                                    Desktop.getDesktop().open(file);
+                                } catch (IOException ex) {
+                                    ex.printStackTrace();
+                                    JOptionPane.showMessageDialog(ancestorWindow, "Failed to open the file: " + file.getAbsolutePath());
+                                }
+                            } else {
+                                JOptionPane.showMessageDialog(ancestorWindow, "The selected item is not a valid file.");
+                            }
+                        }
+                    }
+                }
+            });
+
             inputImageList.setTransferHandler(new FileDropHandler(true, inputImageModel, false, "", ancestorWindow));  // 支援拖放圖片
             JScrollPane inputScrollPane = new JScrollPane(inputImageList);
 
@@ -1260,6 +1297,30 @@ public class MarkdownExtractorGUI extends JFrame {
             // 資料夾列表，支持拖放功能，使用 JList 作為資料夾項目展示，限制高度
 
             outputFolderList.setTransferHandler(new FileDropHandler(false, outputListModel, false, "", ancestorWindow));  // 支援拖放資料夾
+            // 添加雙擊監聽器以打開選中的資料夾
+            outputFolderList.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (e.getClickCount() == 2) { // 檢測雙擊事件
+                        int index = outputFolderList.locationToIndex(e.getPoint()); // 獲取被雙擊項目的索引
+                        if (index != -1) {
+                            String selectedFolderPath = outputListModel.getElementAt(index); // 從 outputListModel 中獲取資料夾路徑
+                            File folder = new File(selectedFolderPath);
+                            if (folder.exists() && folder.isDirectory()) {
+                                try {
+                                    // 使用 Desktop 類打開資料夾
+                                    Desktop.getDesktop().open(folder);
+                                } catch (IOException ex) {
+                                    ex.printStackTrace();
+                                    JOptionPane.showMessageDialog(ancestorWindow, "Failed to open the folder: " + folder.getAbsolutePath());
+                                }
+                            } else {
+                                JOptionPane.showMessageDialog(ancestorWindow, "The selected item is not a valid directory.");
+                            }
+                        }
+                    }
+                }
+            });
 
             // 當 outputFolderList 有變化時保存到配置文件，使用這個才可以每次都保存 而不是有變化才保存 。例如 addListSelectionListener ( 第一次丟入資料夾 不算是有變化 )  。
             outputListModel.addListDataListener(new ListDataListener() {
@@ -1397,7 +1458,30 @@ public class MarkdownExtractorGUI extends JFrame {
             // 輸出圖片顯示區
             outputList = new JList<>(outputModel);
             JScrollPane outputScrollPane = new JScrollPane(outputList);
-
+            // 添加雙擊監聽器以打開資料夾
+            outputList.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (e.getClickCount() == 2) { // 檢測雙擊事件
+                        int index = outputList.locationToIndex(e.getPoint()); // 獲取被雙擊項目的索引
+                        if (index != -1) {
+                            String selectedFolderPath = outputListModel.getElementAt(index);
+                            File folder = new File(selectedFolderPath);
+                            if (folder.exists() && folder.isDirectory()) {
+                                try {
+                                    // 使用 Desktop 類打開文件管理器並顯示該資料夾
+                                    Desktop.getDesktop().open(folder);
+                                } catch (IOException ex) {
+                                    ex.printStackTrace();
+                                    JOptionPane.showMessageDialog(ancestorWindow, "Failed to open the folder: " + folder.getAbsolutePath());
+                                }
+                            } else {
+                                JOptionPane.showMessageDialog(ancestorWindow, "The selected item is not a valid folder.");
+                            }
+                        }
+                    }
+                }
+            });
 
             // myBasicPanel.add(settingZonePanel,BorderLayout.CENTER);
             // myBasicPanel.add(outputScrollPane, BorderLayout.SOUTH);
@@ -1529,6 +1613,25 @@ public class MarkdownExtractorGUI extends JFrame {
             }
 
             String outputFolder = outputListModel.getElementAt(0);
+            File outputFolderFile = new File(outputFolder);
+            String centralImgFolderGOODAncestor = outputFolderFile.getParent();
+
+            // 檢查所有 .md 文件是否包含 centralImgFolderGOODAncestor
+            for (int i = 0; i < inputImageModel.size(); i++) {
+                String inputPath = inputImageModel.getElementAt(i);
+                File inputFile = new File(inputPath);
+
+                try {
+                    if (!inputFile.getCanonicalPath().contains(centralImgFolderGOODAncestor)) {
+                        JOptionPane.showMessageDialog(ancestorWindow, "請提供所有 .md 檔案共同的 centralImgFolder，且其位於相同的上層資料夾。");
+                        return;
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    JOptionPane.showMessageDialog(ancestorWindow, "Failed to access the markdown file: " + inputPath);
+                    return;
+                }
+            }
 
             // 清空臨時資料夾
             File toBeClearTempProcessFolder = new File(outputFolder, "tempProcessFolder");
@@ -1559,12 +1662,14 @@ public class MarkdownExtractorGUI extends JFrame {
 
             String todayDate = LocalDate.now().toString();
             List<String> noNeedCompressMarkDownFiles = new ArrayList<>();
+            List<String> failedFiles = new ArrayList<>();
+            List<String> processedFiles = new ArrayList<>();
+
             for (int i = 0; i < inputImageModel.size(); i++) {
                 String inputPath = inputImageModel.getElementAt(i);
                 File inputFile = new File(inputPath);
 
                 if (inputFile.getName().endsWith(".md")) {
-                    // 處理 .md 文件中的圖片引用
                     try {
                         String content = new String(Files.readAllBytes(inputFile.toPath()));
                         Matcher markdownMatcher = MARKDOWN_IMAGE_PATTERN.matcher(content);
@@ -1573,52 +1678,44 @@ public class MarkdownExtractorGUI extends JFrame {
                         List<String> eachMarkdownOldImageUrls = new ArrayList<>();
 
                         while (markdownMatcher.find()) {
-                            // 將上次匹配到的末尾到此次匹配開始的內容追加到 updatedContent 中
                             updatedContent.append(content, lastIndex, markdownMatcher.start(1));
                             String imageUrl = markdownMatcher.group(1);
 
                             if (imageUrl.endsWith(".png")) {
                                 File imageFile = new File(inputFile.getParent(), imageUrl);
                                 if (imageFile.exists()) {
-
-                                    // 僅壓縮今日的圖片
+                                    // 壓縮圖片
                                     if (onlyTodayCheckBox.isSelected() && imageUrl.contains(todayDate)) {
-                                        // 壓縮符合條件的圖片並替換為 .webp 格式
                                         compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
                                         String newImageUrl = imageUrl.replace(".png", ".webp");
                                         updatedContent.append(newImageUrl);
-
-                                        // 儲存每個 .md 文件對應成功處理的圖片 URL
                                         eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
                                     } else if (!onlyTodayCheckBox.isSelected()) {
-                                        // 如果沒有被打勾 (不用管 todayDate)，壓縮所有的圖片
                                         compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
                                         String newImageUrl = imageUrl.replace(".png", ".webp");
                                         updatedContent.append(newImageUrl);
-                                        // 儲存每個 .md 文件對應成功處理的圖片 URL
                                         eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
                                     } else {
-                                        // 如果圖片不符合壓縮條件，保留原始的 URL
                                         updatedContent.append(imageUrl);
                                     }
                                 } else {
-                                    System.out.println("沒找到圖");
-                                    // 如果圖片不存在，保留原始的 URL
+                                    System.out.println("圖片不存在：" + imageFile.getAbsolutePath());
                                     updatedContent.append(imageUrl);
                                 }
                             } else {
-                                // 如果圖片不是 .png 格式，保留原始的 URL
                                 updatedContent.append(imageUrl);
                             }
 
-                            // 更新 lastIndex 為此次匹配的結束位置
                             lastIndex = markdownMatcher.end(1);
                         }
-                        processedImagesMap.put(inputFile.getName(), eachMarkdownOldImageUrls);
                         updatedContent.append(content.substring(lastIndex));
 
-                        if (!eachMarkdownOldImageUrls.isEmpty() && !outputModel.contains(inputFile.getName())) {
-                            outputModel.addElement(inputFile.getName());
+                        processedImagesMap.put(inputFile.getName(), eachMarkdownOldImageUrls);
+
+                        if (!eachMarkdownOldImageUrls.isEmpty()) {
+                            if (!outputModel.contains(inputFile.getName())) {
+                                outputModel.addElement(inputFile.getName());
+                            }
                             File tempMdFolder = new File(outputFolder, "temp_md_files");
                             if (!tempMdFolder.exists()) {
                                 tempMdFolder.mkdirs();
@@ -1628,20 +1725,41 @@ public class MarkdownExtractorGUI extends JFrame {
                             try (BufferedWriter writer = Files.newBufferedWriter(tempMdOutput.toPath())) {
                                 writer.write(updatedContent.toString());
                             }
+                            processedFiles.add(inputFile.getName());
                         } else {
                             noNeedCompressMarkDownFiles.add(inputFile.getName());
                         }
                     } catch (IOException e) {
                         e.printStackTrace();
-                        JOptionPane.showMessageDialog(ancestorWindow, "Failed to process markdown file: " + inputPath);
+                        failedFiles.add(inputFile.getName());
                     }
                 }
             }
+
+            // 集中顯示處理完成的訊息
             StringBuilder completeMsg = new StringBuilder();
             completeMsg.append("Markdown processing completed.\n");
-            noNeedCompressMarkDownFiles.forEach(notProcessFileName -> completeMsg.append(notProcessFileName + ": 無任何 png 需壓縮或url不符合今日圖片，已自動剔除\n"));
-            JOptionPane.showMessageDialog(ancestorWindow, completeMsg);
+
+            if (!processedFiles.isEmpty()) {
+                completeMsg.append("\n已成功處理的文件:\n");
+                processedFiles.forEach(fileName -> completeMsg.append(fileName).append("\n"));
+            }
+
+            if (!noNeedCompressMarkDownFiles.isEmpty()) {
+                completeMsg.append("\n以下文件無任何 PNG 需壓縮或 URL 不符合今日圖片，已自動剔除:\n");
+                noNeedCompressMarkDownFiles.forEach(fileName -> completeMsg.append(fileName).append("\n"));
+            }
+
+            if (!failedFiles.isEmpty()) {
+                completeMsg.append("\n以下文件處理失敗:\n");
+                failedFiles.forEach(fileName -> completeMsg.append(fileName).append("\n"));
+            }
+
+            JOptionPane.showMessageDialog(ancestorWindow, completeMsg.toString());
         }
+
+
+
 
 
 
@@ -1702,6 +1820,9 @@ public class MarkdownExtractorGUI extends JFrame {
             }
         }
 
+
+
+
         public void replaceAndGO() {
             if (outputListModel.isEmpty()) {
                 JOptionPane.showMessageDialog(ancestorWindow, "Please provide an output folder.");
@@ -1718,10 +1839,36 @@ public class MarkdownExtractorGUI extends JFrame {
                 return;
             }
 
+            // 創建垃圾桶集中資料夾
+            File trashFolder = new File(outputFolder, "Trash_Backup");
+            File trashMdFolder = new File(trashFolder, "md_files");
+            File trashPngFolder = new File(trashFolder, "png_files");
+            if (!trashMdFolder.exists()) {
+                trashMdFolder.mkdirs();
+            }
+            if (!trashPngFolder.exists()) {
+                trashPngFolder.mkdirs();
+            }
+
+            // 設置 Trash_Backup 資料夾的權限，確保用戶可以刪除
+            setFolderPermissions(trashFolder);
+            setFolderPermissions(trashMdFolder);
+            setFolderPermissions(trashPngFolder);
+
+
             // 替換壓縮後的圖片
             for (File tempFile : tempProcessFolder.listFiles()) {
                 File finalOutputFile = new File(outputFolder, tempFile.getName());
                 if (finalOutputFile.exists()) {
+                    // 備份原始文件到垃圾桶中的 png 集中資料夾
+                    try {
+                        File backupFile = new File(trashPngFolder, finalOutputFile.getName());
+                        Files.copy(finalOutputFile.toPath(), backupFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        JOptionPane.showMessageDialog(ancestorWindow, "Failed to backup file to trash: " + finalOutputFile.getAbsolutePath());
+                        return;
+                    }
                     finalOutputFile.delete(); // 刪除既有的輸出檔案，確保覆蓋
                 }
                 try {
@@ -1743,28 +1890,39 @@ public class MarkdownExtractorGUI extends JFrame {
                     }
                     File originalMdFile = new File(originalMdFilePath);
                     try {
+                        // 備份原始的 .md 文件到垃圾桶中的 md 資料夾
+                        File backupMdFile = new File(trashMdFolder, originalMdFile.getName());
+                        Files.copy(originalMdFile.toPath(), backupMdFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
                         // 用臨時處理的 .md 文件替換原始文件
                         Files.copy(tempMdFile.toPath(), originalMdFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                        //System.out.println("替換成功: " + originalMdFile.getAbsolutePath());
-                        // 使用 lambda 表達式刪除對應的原始 .png 圖片
+
+                        // 使用 lambda 表達式備份並刪除對應的原始 .png 圖片
                         List<String> oldImageUrls = processedImagesMap.get(originalMdFile.getName());
                         if (oldImageUrls != null) {
                             oldImageUrls.forEach(url -> {
                                 File pngFile = new File(url);
                                 if (pngFile.exists()) {
-                                    boolean deleted = pngFile.delete();
-                                    if (deleted) {
-                                        System.out.println("已刪除原始圖片: " + url);
+                                    try {
+                                        // 備份 .png 文件到垃圾桶中的 png 資料夾
+                                        File backupPngFile = new File(trashPngFolder, pngFile.getName());
+                                        Files.copy(pngFile.toPath(), backupPngFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-                                    } else {
-                                        System.err.println("無法刪除圖片: " + url);
-                                        JOptionPane.showMessageDialog(ancestorWindow, "無法刪除圖片: " + url);
+                                        boolean deleted = pngFile.delete();
+                                        if (deleted) {
+                                            System.out.println("已刪除原始圖片: " + url);
+                                        } else {
+                                            System.err.println("無法刪除圖片: " + url);
+                                            JOptionPane.showMessageDialog(ancestorWindow, "無法刪除圖片: " + url);
+                                        }
+                                    } catch (IOException e) {
+                                        e.printStackTrace();
+                                        JOptionPane.showMessageDialog(ancestorWindow, "Failed to backup .png file: " + pngFile.getAbsolutePath());
                                     }
                                 } else {
                                     System.err.println("找不到圖片: " + url);
                                 }
                             });
-                            JOptionPane.showMessageDialog(ancestorWindow, "已永久刪除原始圖片: ");
                         }
                     } catch (IOException e) {
                         e.printStackTrace();
@@ -1781,12 +1939,41 @@ public class MarkdownExtractorGUI extends JFrame {
                 if (tempMdFolder.exists()) {
                     deleteDirectoryRecursively(tempMdFolder.toPath());
                 }
-                JOptionPane.showMessageDialog(ancestorWindow, "Files have been moved and temp folder deleted successfully.");
+
+                // 將 Trash_Backup 資料夾移動到回收桶
+                moveToTrash(trashFolder);
+
+                JOptionPane.showMessageDialog(ancestorWindow, "Files have been replaced, and Trash_Backup moved to recycle bin successfully.");
             } catch (IOException e) {
                 e.printStackTrace();
                 JOptionPane.showMessageDialog(ancestorWindow, "Failed to delete temporary process folder.");
             }
         }
+
+        // 將文件或文件夾移動到資源回收桶
+        private void moveToTrash(File file) {
+            if (file.exists()) {
+                Desktop.getDesktop().moveToTrash(file);
+                System.out.println("已將資料夾移動到資源回收桶: " + file.getAbsolutePath());
+            }
+        }
+
+        // 設置文件夾的權限，確保用戶可以刪除
+        private void setFolderPermissions(File folder) {
+            if (folder.exists()) {
+                boolean writable = folder.setWritable(true, false); // 可寫，對所有人開放
+                boolean readable = folder.setReadable(true, false); // 可讀，對所有人開放
+                boolean executable = folder.setExecutable(true, false); // 可執行，對所有人開放
+                if (writable && readable && executable) {
+                    System.out.println("設置權限成功: " + folder.getAbsolutePath());
+                } else {
+                    System.out.println("無法設置所有權限: " + folder.getAbsolutePath());
+                }
+            }
+        }
+
+
+
 
         // 用於查找原始 .md 文件的路徑
         private String findOriginalMdFile(String fileName) {
