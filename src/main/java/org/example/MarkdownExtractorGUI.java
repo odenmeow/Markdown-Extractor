@@ -149,9 +149,9 @@ public class MarkdownExtractorGUI extends JFrame {
                             }
 
                             if (alert){
-                                System.out.println("hihihi");
+
                                 if (alertString.contains("集中圖片資料夾")) {
-                                    System.out.println("???");
+
                                     JOptionPane.showMessageDialog(passedInComponent, alertString + file.getName());
                                 }
                                 else{
@@ -1931,44 +1931,67 @@ public class MarkdownExtractorGUI extends JFrame {
                 }
             }
 
-            // 刪除臨時資料夾
-            try {
-                if (tempProcessFolder.exists()) {
-                    deleteDirectoryRecursively(tempProcessFolder.toPath());
-                }
-                if (tempMdFolder.exists()) {
-                    deleteDirectoryRecursively(tempMdFolder.toPath());
-                }
+                // 刪除臨時資料夾
+                try {
+                    // img 資料夾
+                    if (tempProcessFolder.exists()) {
+                        deleteDirectoryRecursively(tempProcessFolder.toPath());
+                    }
+                    // .md 資料夾
+                    if (tempMdFolder.exists()) {
+                        deleteDirectoryRecursively(tempMdFolder.toPath());
+                    }
 
-                // 將 Trash_Backup 資料夾移動到回收桶
-                moveToTrash(trashFolder);
-
-                JOptionPane.showMessageDialog(ancestorWindow, "Files have been replaced, and Trash_Backup moved to recycle bin successfully.");
-            } catch (IOException e) {
-                e.printStackTrace();
-                JOptionPane.showMessageDialog(ancestorWindow, "Failed to delete temporary process folder.");
+                    // 嘗試將 Trash_Backup 資料夾移動到回收桶
+                    if (trashFolder.exists()) {
+                        moveToTrash(trashFolder);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    JOptionPane.showMessageDialog(ancestorWindow, "Failed to delete temporary process folder.");
+                }
             }
-        }
 
-        // 將文件或文件夾移動到資源回收桶
+        // 將文件或文件夾移動到資源回收桶，並在失敗時提示用戶
         private void moveToTrash(File file) {
             if (file.exists()) {
-                Desktop.getDesktop().moveToTrash(file);
-                System.out.println("已將資料夾移動到資源回收桶: " + file.getAbsolutePath());
+                boolean success = false;
+                int retryCount = 3; // 嘗試3次
+                for (int i = 0; i < retryCount; i++) {
+                    success = Desktop.getDesktop().moveToTrash(file);
+                    if (success) {
+                        // 移動成功後，顯示成功訊息並結束嘗試
+                        JOptionPane.showMessageDialog(ancestorWindow, "替換成功、已將舊資料移到回收桶 :: Replaced. Old files recycled " + file.getAbsolutePath());
+                        System.out.println("替換成功、已將舊資料移到回收桶 :: Replaced. Old files recycled " + file.getAbsolutePath());
+                        break;
+                    }
+                    // 等待0.5秒再重試
+                    try {
+                        Thread.sleep(500); // 等待 0.5 秒
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+                // 如果在所有嘗試後仍然無法移動，顯示錯誤訊息
+                if (!success) {
+                    JOptionPane.showMessageDialog(ancestorWindow, "丟垃圾失敗 :: Failed to move folder to recycle bin: " + file.getAbsolutePath());
+                    System.out.println("丟垃圾失敗 :: Failed to move folder to recycle bin: " + file.getAbsolutePath());
+                    System.out.println("如果不需trashFolder內容，建議手動使用管理者權限，cmd 輸入下面可以強制永久刪除");
+                    System.out.println("Remove-Item -Path \"" + file.getAbsolutePath() + "\" -Recurse -Force");
+                }
             }
         }
+
+
 
         // 設置文件夾的權限，確保用戶可以刪除
         private void setFolderPermissions(File folder) {
             if (folder.exists()) {
-                boolean writable = folder.setWritable(true, false); // 可寫，對所有人開放
-                boolean readable = folder.setReadable(true, false); // 可讀，對所有人開放
-                boolean executable = folder.setExecutable(true, false); // 可執行，對所有人開放
-                if (writable && readable && executable) {
-                    System.out.println("設置權限成功: " + folder.getAbsolutePath());
-                } else {
-                    System.out.println("無法設置所有權限: " + folder.getAbsolutePath());
-                }
+                folder.setWritable(true, false);
+                folder.setReadable(true, false);
+                folder.setExecutable(true, false);
+
+                System.out.println("已嘗試設置權限: " + folder.getAbsolutePath() + " (權限設置可能不受支持，忽略錯誤)");
             }
         }
 
