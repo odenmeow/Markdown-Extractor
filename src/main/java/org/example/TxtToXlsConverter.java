@@ -19,6 +19,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 /*
 * EXCEL 可以使用，讓標題變好看。
@@ -232,19 +233,27 @@ public class TxtToXlsConverter extends JFrame {
                 cell.setCellValue(newValue);
             }
             cell.setCellStyle(wrapStyle);
-            sheet.autoSizeColumn(cellIndex);
         }
         // 添加「長度符合」欄位標題
         headerRow.createCell(cellIndex).setCellValue("長度符合");
 
         // 資料行
+        int maxWidth = 0; // 不能auto去判斷寬，只適用標題列而已
+        HashMap<Integer,Integer> maxWidthMap= new HashMap<>();
         for (int rowIndex = 0; rowIndex < lines.size(); rowIndex++) {
             String line = lines.get(rowIndex);
             Row row = sheet.createRow(rowIndex + 1);//cuz 標題列
+
             for (int colIndex = 0; colIndex < columnConfigs.size(); colIndex++) {
                 ByteColumnConfig config = columnConfigs.get(colIndex);
                 String cellData = extractExactlyByteSubstring(line, config);
                 row.createCell(colIndex).setCellValue(cellData);
+                // 計算框框的大小，找最大就好
+
+                maxWidth = Math.max(
+                        maxWidthMap.getOrDefault(colIndex,0),
+                        cellData.getBytes(Charset.forName("UTF-8")).length);
+                maxWidthMap.put(colIndex, maxWidth);
                 // 計算 bytes 總長度是否符合
                 if (colIndex == (columnConfigs.size()-1)){
                     // 指定使用 Big5 編碼
@@ -257,13 +266,15 @@ public class TxtToXlsConverter extends JFrame {
                     else{
                         row.createCell(colIndex+1).setCellValue("GG: 應該 (" +config.toByteColumn +") 實際 ("+bytes.length+")");
                     }
-                    sheet.autoSizeColumn(colIndex+1);
                 }
-                sheet.autoSizeColumn(colIndex);
-
+                // 乘以 256 是 POI 的列寬單位
+                System.out.println("最大"+maxWidth);
             }
         }
-
+        // 固定每列寬度
+        for (int colIndex = 0; colIndex < columnConfigs.size(); colIndex++) {
+            sheet.setColumnWidth(colIndex, (maxWidthMap.get(colIndex) + 1) * 256); // 5000 是一個合理的寬度（大約 20 個字元）
+        }
         // 輸出為 XLS
         try (FileOutputStream fos = new FileOutputStream(outputFilePath)) {
             workbook.write(fos);
@@ -287,7 +298,7 @@ public class TxtToXlsConverter extends JFrame {
                 String subset = new String(bytes, config.fromByteColumn-1,
                         config.toByteColumn - (config.fromByteColumn-1),
                         big5);
-                return subset;
+                return subset + "【"+ "應佔:"+ (config.toByteColumn - (config.fromByteColumn-1)) +"實際:"+ subset.getBytes(big5).length  +"】";
             }else{
                 // 無效
                 return "ERROR(truncated轉譯失敗)";
