@@ -2,7 +2,7 @@
   <artifact type="jar" name="MarkdownExtractor">
     <output-path>$PROJECT_DIR$/out/artifacts/MarkdownExtractor</output-path>
     <root id="archive" name="MarkdownExtractor.jar">
-      <element id="module-output" name="Markdown-Extractor" />
+      <element id="module-output" name="MarkDownExtractor" />
     </root>
   </artifact>
 </component>
