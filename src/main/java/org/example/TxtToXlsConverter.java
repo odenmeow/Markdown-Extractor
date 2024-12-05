@@ -56,7 +56,7 @@ public class TxtToXlsConverter extends JFrame {
 
         // 檔案路徑顯示區域
         JPanel filePanel = new JPanel(new BorderLayout());
-        filePathField = new JTextField("Drag and Drop a File Here");
+        filePathField = new JTextField("【Drag and Drop a File Here】.....check條件，必須緊湊，例如:A;B; ;regex(放regex格式);");
         filePathField.setEditable(false);
         filePanel.add(filePathField, BorderLayout.CENTER);
 
@@ -91,7 +91,7 @@ public class TxtToXlsConverter extends JFrame {
         add(filePanel, BorderLayout.NORTH);
 
         // 欄位設定表格
-        String[] columnNames = {"From ByteColumn", "To ByteColumn", "Text"};
+        String[] columnNames = {"From ByteColumn", "To ByteColumn", "Text", "Check"};
         tableModel = new DefaultTableModel(columnNames, 0);
         columnTable = new JTable(tableModel);
         JScrollPane scrollPane = new JScrollPane(columnTable);
@@ -100,7 +100,7 @@ public class TxtToXlsConverter extends JFrame {
         // 底部按鈕
         JPanel buttonPanel = new JPanel();
         JButton addButton = new JButton("Add ByteColumn");
-        addButton.addActionListener(e -> tableModel.addRow(new Object[]{"", "", ""}));
+        addButton.addActionListener(e -> tableModel.addRow(new Object[]{"", "", "", ""}));
 
         JButton convertButton = new JButton("Convert");
         convertButton.addActionListener(e -> convertToXls());
@@ -122,7 +122,7 @@ public class TxtToXlsConverter extends JFrame {
 
     private void convertToXls() {
         String filePath = filePathField.getText();
-        if (filePath.isEmpty() || filePath.equals("Drag and Drop a File Here")) {
+        if (filePath.isEmpty() || filePath.equals("【Drag and Drop a File Here】.....check條件，必須緊湊，例如:A;B; ;regex(放regex格式);")) {
             JOptionPane.showMessageDialog(this, "Please drag and drop a file first!");
             return;
         }
@@ -132,18 +132,20 @@ public class TxtToXlsConverter extends JFrame {
             Object fromObj = tableModel.getValueAt(i, 0);
             Object toObj = tableModel.getValueAt(i, 1);
             Object textObj = tableModel.getValueAt(i, 2);
+            Object checkObj = tableModel.getValueAt(i,3);
 
             // 檢查是否所有欄位都為空，若是則跳過此列
             if ((fromObj == null || fromObj.toString().trim().isEmpty()) &&
                     (toObj == null || toObj.toString().trim().isEmpty()) &&
-                    (textObj == null || textObj.toString().trim().isEmpty())) {
+                    (textObj == null || textObj.toString().trim().isEmpty()) &&
+                    (checkObj == null || checkObj.toString().trim().isEmpty())) { // 修改這一行
                 continue; // 若整列都是空的，跳過該列
             }
 
             int from = 0;
             int to = 0;
             String text = "";
-
+            String check = "";
             // 確認資料類型後進行轉換
             if (fromObj instanceof Integer) {
                 from = (Integer) fromObj;
@@ -164,7 +166,10 @@ public class TxtToXlsConverter extends JFrame {
                 text = textObj.toString().trim(); // 確保 text 是字串並去除空格
             }
 
-            columnConfigs.add(new ByteColumnConfig(from, to, text));
+            if (checkObj != null) {
+                check = checkObj.toString().trim(); // 確保 check 是字串並去除空格
+            }
+            columnConfigs.add(new ByteColumnConfig(from, to, text, check));
         }
 
         // 寫入 XLS
@@ -222,17 +227,28 @@ public class TxtToXlsConverter extends JFrame {
         wrapStyle.setAlignment(HorizontalAlignment.CENTER);
         wrapStyle.setWrapText(true);
         Row headerRow = sheet.createRow(0);
+        Row checkRow = sheet.createRow(1);
         int cellIndex = 0;
         for (ByteColumnConfig config : columnConfigs) {
-            Cell cell = headerRow.createCell(cellIndex++);
-            cell.setCellValue(config.text);
+            Cell cellHeader = headerRow.createCell(cellIndex);
+            Cell cellCheck = checkRow.createCell(cellIndex);
+            cellIndex++;
+            cellHeader.setCellValue(config.text);
+            cellCheck.setCellValue(config.check);
 
             // 檢查標題內容長度
             if (config.text.length() > 8) {
                 String newValue = insertLineBreaks(config.text,8);
-                cell.setCellValue(newValue);
+                cellHeader.setCellValue(newValue);
             }
-            cell.setCellStyle(wrapStyle);
+            // 檢查check內容長度
+            if (config.check.length() > 20) {
+                String newValue = insertLineBreaks(config.check,10);
+                cellCheck.setCellValue(newValue);
+            }
+
+            cellHeader.setCellStyle(wrapStyle);
+            cellCheck.setCellStyle(wrapStyle);
         }
         // 添加「長度符合」欄位標題
         headerRow.createCell(cellIndex).setCellValue("長度符合");
@@ -242,11 +258,12 @@ public class TxtToXlsConverter extends JFrame {
         HashMap<Integer,Integer> maxWidthMap= new HashMap<>();
         for (int rowIndex = 0; rowIndex < lines.size(); rowIndex++) {
             String line = lines.get(rowIndex);
-            Row row = sheet.createRow(rowIndex + 1);//cuz 標題列
+            Row row = sheet.createRow(rowIndex + 2);//cuz 標題列、條件列
 
             for (int colIndex = 0; colIndex < columnConfigs.size(); colIndex++) {
                 ByteColumnConfig config = columnConfigs.get(colIndex);
                 String cellData = extractExactlyByteSubstring(line, config);
+                cellData = checkCellData(cellData,config);
                 row.createCell(colIndex).setCellValue(cellData);
                 // 計算框框的大小，找最大就好
 
@@ -280,6 +297,63 @@ public class TxtToXlsConverter extends JFrame {
             workbook.write(fos);
         }
         workbook.close();
+    }
+
+    private String checkCellData(String cellData, ByteColumnConfig config) {
+        int index = cellData.indexOf("【");
+        String cellDataMetaData = "";
+        if(index != -1){
+            if (config.check.trim().isEmpty())
+                return cellData + cellDataMetaData + "略";
+            // cellData = "AAAAA【應該5 實際5】"
+            cellDataMetaData = cellData.substring(index); // "【應該5 實際5】"
+            cellData = cellData.substring(0, index); // "AAAAA"
+            String[] conditions = config.check.split(";"); // 格式條件
+            // condition[0] = "A"
+            // condition[1] = "B"
+            // condition[2] = "C"
+            // condition[3] = " "  則 cellData 應該符合以上任一才行
+            // condition[4] = "regex(^\d{8}$)"  例如左邊 則 cellData 需要是8位數字 才能pass
+            String checkResult = "";
+            boolean matchFound = false;
+
+
+
+            for(String condition : conditions){
+
+                if(condition.startsWith("regex(") && condition.trim().endsWith(")")){
+                    // 提取正則表達式
+                    String regexPattern = condition.substring(6, condition.length() - 1);
+                    if(cellData.matches(regexPattern)){
+                        matchFound = true;
+                        break;
+                    }
+                } else {
+                    // 簡單的字符串比較
+                    if(cellData.equals(condition)){
+                        matchFound = true;
+                        break;
+                    }
+                    if(condition.equals("略")){
+                        return cellData + cellDataMetaData + "觸發略字";
+                    }
+                }
+            }
+
+            if(matchFound){
+                checkResult = "[PASS]"; // 檢查通過
+            } else {
+                checkResult = "（檢查不通過）";
+            }
+
+            return cellData + cellDataMetaData + checkResult;
+
+        } else {
+            System.out.println("cell 內有 ERROR 不處理");
+            // "ERROR(truncated轉譯失敗)";
+            // "ERROR2(outOfBound)";
+            return cellData;
+        }
     }
 
     //
@@ -370,7 +444,7 @@ public class TxtToXlsConverter extends JFrame {
                 ByteColumnConfig[] configs = objectMapper.readValue(fileToLoad, ByteColumnConfig[].class);
                 tableModel.setRowCount(0); // 清空表格
                 for (ByteColumnConfig config : configs) {
-                    tableModel.addRow(new Object[]{config.fromByteColumn, config.toByteColumn, config.text});
+                    tableModel.addRow(new Object[]{config.fromByteColumn, config.toByteColumn, config.text, config.check});
                 }
                 JOptionPane.showMessageDialog(this, "Configuration loaded successfully from " + fileToLoad.getAbsolutePath());
             } catch (IOException e) {
@@ -385,17 +459,20 @@ public class TxtToXlsConverter extends JFrame {
             Object fromObj = tableModel.getValueAt(i, 0);
             Object toObj = tableModel.getValueAt(i, 1);
             Object textObj = tableModel.getValueAt(i, 2);
+            Object checkObj = tableModel.getValueAt(i, 3); // 添加這一行
 
             // 檢查是否所有欄位都為空，若是則跳過此列
             if ((fromObj == null || fromObj.toString().trim().isEmpty()) &&
                     (toObj == null || toObj.toString().trim().isEmpty()) &&
-                    (textObj == null || textObj.toString().trim().isEmpty())) {
+                    (textObj == null || textObj.toString().trim().isEmpty()) &&
+                    (checkObj == null || checkObj.toString().trim().isEmpty())) { // 修改這一行
                 continue; // 若整列都是空的，跳過該列
             }
 
             int from = 0;
-            Integer to = null; //這樣預設才會是 null
+            Integer to = null; // 這樣預設才會是 null
             String text = "";
+            String check = ""; // 添加這一行
 
             // 確認資料類型後進行轉換
             if (fromObj instanceof Integer) {
@@ -415,10 +492,15 @@ public class TxtToXlsConverter extends JFrame {
                 text = textObj.toString().trim(); // 確保 text 是字串並去除空格
             }
 
-            columnConfigs.add(new ByteColumnConfig(from, to, text));
+            if (checkObj != null) {
+                check = checkObj.toString().trim(); // 確保 check 是字串並去除空格
+            }
+
+            columnConfigs.add(new ByteColumnConfig(from, to, text, check)); // 添加 check 參數
         }
         return columnConfigs;
     }
+
 
 
 
@@ -432,14 +514,18 @@ public class TxtToXlsConverter extends JFrame {
         @JsonProperty("text")
         private String text;
 
+        @JsonProperty("check")
+        private String check;
+
         // 無參構造函數（Jackson 需要）
         public ByteColumnConfig() {}
 
         // 有參構造函數
-        public ByteColumnConfig(int fromByteColumn, Integer toByteColumn, String text) {
+        public ByteColumnConfig(int fromByteColumn, Integer toByteColumn, String text, String check) {
             this.fromByteColumn = fromByteColumn;
             this.toByteColumn = toByteColumn;
             this.text = text;
+            this.check = check;
         }
 
         // Getter 和 Setter
@@ -466,6 +552,14 @@ public class TxtToXlsConverter extends JFrame {
 
         public void setText(String text) {
             this.text = text;
+        }
+
+        public String getCheck() {
+            return check;
+        }
+
+        public void setCheck(String check) {
+            this.check = check;
         }
     }
 
