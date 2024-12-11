@@ -42,6 +42,14 @@ End Sub
 *
 * */
 public class TxtToXlsConverter extends JFrame {
+
+    private String HowCheckItemFill= """
+                    1.檢核方式空白要檢核需要前後都有分號，例如【;  ;A】>>>>> A和空白*2
+                    2.【regex(^\\d{3}\\.\\d{1}$);】  >>>> 可以讓 025.0 格式識別
+                    3.【regex(^\\d{10}$);A;略】 >> A 和 10個數字組成的
+                    4.【A;B;C; ;】 >>>A、B、C、空白
+                    5. from 一定要填，to可以省略 -------------------省事
+            """;
     private JTextField filePathField;
     private JTable columnTable;
     private DefaultTableModel tableModel;
@@ -51,11 +59,22 @@ public class TxtToXlsConverter extends JFrame {
         setSize(600, 400);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
-
+        // 檢核說明區域
+        JPanel infoPanel = new JPanel(new BorderLayout());
+        JTextArea infoArea = new JTextArea(HowCheckItemFill);
+        infoArea.setEditable(false);
+        infoArea.setLineWrap(true); // 啟用自動換行
+        infoArea.setWrapStyleWord(true); // 使換行更美觀
+        infoArea.setBackground(getBackground()); // 設置與 GUI 背景一致
+        infoArea.setBorder(BorderFactory.createEmptyBorder(10, 10, 0, 10)); // 設置邊距
+        infoPanel.add(infoArea, BorderLayout.NORTH);
         // 檔案路徑顯示區域
         JPanel filePanel = new JPanel(new BorderLayout());
         filePathField = new JTextField("【Drag and Drop a File Here】.....check條件，必須緊湊，例如:A;B; ;regex(放regex格式);");
+        // 增加 JTextField 的首選高度
+        filePathField.setPreferredSize(new Dimension(filePathField.getPreferredSize().width, 40)); // 高度設為 40px
         filePathField.setEditable(false);
+        filePanel.add(infoPanel, BorderLayout.NORTH);// 將說明放置在最頂部
         filePanel.add(filePathField, BorderLayout.CENTER);
 
         // DropTarget 支援拖放功能
@@ -130,13 +149,13 @@ public class TxtToXlsConverter extends JFrame {
             Object fromObj = tableModel.getValueAt(i, 0);
             Object toObj = tableModel.getValueAt(i, 1);
             Object textObj = tableModel.getValueAt(i, 2);
-            Object checkObj = tableModel.getValueAt(i,3);
+            Object checkObj = tableModel.getValueAt(i, 3);
 
             // 檢查是否所有欄位都為空，若是則跳過此列
             if ((fromObj == null || fromObj.toString().trim().isEmpty()) &&
                     (toObj == null || toObj.toString().trim().isEmpty()) &&
                     (textObj == null || textObj.toString().trim().isEmpty()) &&
-                    (checkObj == null || checkObj.toString().trim().isEmpty())) { // 修改這一行
+                    (checkObj == null || checkObj.toString().trim().isEmpty())) {
                 continue; // 若整列都是空的，跳過該列
             }
 
@@ -144,29 +163,45 @@ public class TxtToXlsConverter extends JFrame {
             int to = 0;
             String text = "";
             String check = "";
-            // 確認資料類型後進行轉換
-            if (fromObj instanceof Integer) {
-                from = (Integer) fromObj;
-            } else if (fromObj instanceof String && !((String) fromObj).trim().isEmpty()) {
-                from = Integer.parseInt((String) fromObj);
+
+            // 解析 `from` 欄位
+            try {
+                if (fromObj instanceof Integer) {
+                    from = (Integer) fromObj;
+                } else if (fromObj instanceof String && !((String) fromObj).trim().isEmpty()) {
+                    from = Integer.parseInt((String) fromObj);
+                }
+            } catch (NumberFormatException e) {
+                // 顯示例外訊息到控制台和 MsgBox
+                System.out.println("解析 from 欄位時發生錯誤: " + e.getMessage());
+                JOptionPane.showMessageDialog(null, "解析 from 欄位時發生錯誤: " + e.getMessage());
+                return; // 結束處理
             }
 
-            if (toObj instanceof Integer) {
-                to = (Integer) toObj;
-            } else if (toObj instanceof String && !((String) toObj).trim().isEmpty()) {
-                to = Integer.parseInt((String) toObj);
-            } else {
-                to = from; // 如果 toByteColumn 無效或為空，設為 fromByteColumn
+            // 解析 `to` 欄位
+            try {
+                if (toObj instanceof Integer) {
+                    to = (Integer) toObj;
+                } else if (toObj instanceof String && !((String) toObj).trim().isEmpty()) {
+                    to = Integer.parseInt((String) toObj);
+                } else {
+                    to = from; // 如果 toByteColumn 無效或為空，設為 fromByteColumn
+                }
+            } catch (NumberFormatException e) {
+                // 顯示例外訊息到控制台和 MsgBox
+                System.out.println("解析 to 欄位時發生錯誤: " + e.getMessage());
+                JOptionPane.showMessageDialog(null, "解析 to 欄位時發生錯誤: " + e.getMessage());
+                return; // 結束處理
             }
 
-
+            // 確保文字與條件欄位為字串
             if (textObj != null) {
-                text = textObj.toString().trim(); // 確保 text 是字串並去除空格
+                text = textObj.toString().trim();
+            }
+            if (checkObj != null) {
+                check = checkObj.toString().trim();
             }
 
-            if (checkObj != null) {
-                check = checkObj.toString().trim(); // 確保 check 是字串並去除空格
-            }
             columnConfigs.add(new ByteColumnConfig(from, to, text, check));
         }
 
@@ -177,11 +212,13 @@ public class TxtToXlsConverter extends JFrame {
             writeToXls(lines, columnConfigs, outputFilePath);
             JOptionPane.showMessageDialog(this, "Conversion completed! Output: " + outputFilePath);
         } catch (Exception ex) {
-            System.out.println(ex.toString());
+            // 顯示例外訊息到控制台和 MsgBox
+            System.out.println("轉換過程中發生錯誤: " + ex.getMessage());
             ex.printStackTrace();
-            JOptionPane.showMessageDialog(this, "Error during conversion: " + ex.toString());
+            JOptionPane.showMessageDialog(null, "轉換過程中發生錯誤: " + ex.getMessage());
         }
     }
+
 
 
     private List<String> readTxtFile(String filePath) throws IOException {
