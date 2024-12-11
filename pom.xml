@@ -42,59 +42,19 @@
 
     <build>
         <plugins>
-            <!-- 用於生成精簡 JRE 的 jlink 插件 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jlink-plugin</artifactId>
-                <version>3.1.0</version>
+                <artifactId>maven-jdeps-plugin</artifactId>
+                <version>3.1.2</version>
                 <executions>
                     <execution>
-                        <id>make-custom-runtime</id>
-                        <phase>package</phase>
                         <goals>
-                            <goal>jlink</goal>
+                            <goal>jdkinternals</goal> <!-- verify main classes -->
+                            <goal>test-jdkinternals</goal> <!-- verify test classes -->
                         </goals>
-                        <configuration>
-                            <!-- 指定所需模組 -->
-                            <addModules>
-                                <addModule>java.base</addModule>
-                                <addModule>java.logging</addModule>
-                                <addModule>java.desktop</addModule>
-                                <addModule>java.xml</addModule>
-                            </addModules>
-                            <!-- 自定義 JRE 輸出目錄 -->
-                            <outputDirectory>${project.build.directory}/custom-runtime</outputDirectory>
-                            <!-- 其他選項 -->
-                            <stripDebug>true</stripDebug>
-                            <noHeaderFiles>true</noHeaderFiles>
-                            <noManPages>true</noManPages>
-                            <compress>2</compress>
-                        </configuration>
                     </execution>
                 </executions>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.4.1</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <transformers>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>org.example.TxtToXlsConverter</mainClass> <!-- 修改為你的主類 -->
-                                </transformer>
-                            </transformers>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-
         </plugins>
     </build>
 </project>

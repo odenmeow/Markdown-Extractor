@@ -1,6 +1,5 @@
 package org.example;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
@@ -9,7 +8,6 @@ import org.apache.poi.ss.usermodel.*;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.awt.Font;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.dnd.*;
 import java.io.*;
@@ -188,12 +186,22 @@ public class TxtToXlsConverter extends JFrame {
 
     private List<String> readTxtFile(String filePath) throws IOException {
         List<String> lines = new ArrayList<>();
-        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+// 預設狀態可能會是 utf8 所以導致讀到的 line
+//      原始line:D45111131212305479111111111111122222222221                    3333333333N4444444444N5555555555N���Q�Ӧr���Q�Ӧr���Q�Ӧr���Q�Ӧr���Q�Ӧr���Q�Ӧr���Q�Ӧr���Q�Ӧr���Q�Ӧr���Q�Ӧr���Q�Ӧr���Q�Ӧr���Q066.6
+//        try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
+//            String line;
+//            while ((line = br.readLine()) != null) {
+//                lines.add(line);
+//            }
+//        }
+        // 改用 Big5 指定方式
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(filePath), "Big5"))) {
             String line;
             while ((line = br.readLine()) != null) {
                 lines.add(line);
             }
         }
+
         return lines;
     }
     /**
@@ -226,6 +234,7 @@ public class TxtToXlsConverter extends JFrame {
         wrapStyle.setVerticalAlignment(VerticalAlignment.CENTER);
         wrapStyle.setAlignment(HorizontalAlignment.CENTER);
         wrapStyle.setWrapText(true);
+
         Row headerRow = sheet.createRow(0);
         Row checkRow = sheet.createRow(1);
         int cellIndex = 0;
@@ -304,7 +313,7 @@ public class TxtToXlsConverter extends JFrame {
         String cellDataMetaData = "";
         if(index != -1){
             if (config.check.trim().isEmpty())
-                return cellData + cellDataMetaData + "略";
+                return cellData + cellDataMetaData + "沒寫條件檢核";
             // cellData = "AAAAA【應該5 實際5】"
             cellDataMetaData = cellData.substring(index); // "【應該5 實際5】"
             cellData = cellData.substring(0, index); // "AAAAA"
@@ -366,12 +375,16 @@ public class TxtToXlsConverter extends JFrame {
         // 將字符串轉換為 Big5 編碼的字節數組
         byte[] bytes = line.getBytes(big5);
         try {
+            // bytes 實際上由0開始，但 config 則是 1 開始。
             boolean isValid = isValidByteRange(bytes, config.fromByteColumn - 1, config.toByteColumn, big5);
             if (isValid){
                 // 如果有效，進行解碼
-                String subset = new String(bytes, config.fromByteColumn-1,
-                        config.toByteColumn - (config.fromByteColumn-1),
-                        big5);
+                int offset = config.fromByteColumn-1;
+                int length = config.toByteColumn - (config.fromByteColumn-1);
+//                System.out.println("原始line:"+line);
+//                System.out.println("輸出::"+new String(bytes, 0,bytes.length,big5));
+                String subset = new String(bytes, offset,length, big5);
+
                 return subset + "【"+ "應佔:"+ (config.toByteColumn - (config.fromByteColumn-1)) +"實際:"+ subset.getBytes(big5).length  +"】";
             }else{
                 // 無效
