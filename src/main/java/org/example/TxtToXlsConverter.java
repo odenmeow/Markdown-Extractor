@@ -48,7 +48,7 @@ public class TxtToXlsConverter extends JFrame {
                     2.【regex(^\\d{3}\\.\\d{1}$);】  >>>> 可以讓 025.0 格式識別
                     3.【regex(^\\d{10}$);A;略】 >> A 和 10個數字組成的
                     4.【A;B;C; ;】 >>>A、B、C、空白
-                    5. from 一定要填，to可以省略 -------------------省事
+                    5. from 一定要填，to 不一定 ( 除非 last row )---------------但讀取還是會都補上 
             """;
     private JTextField filePathField;
     private JTable columnTable;
@@ -120,7 +120,13 @@ public class TxtToXlsConverter extends JFrame {
         addButton.addActionListener(e -> tableModel.addRow(new Object[]{"", "", "", ""}));
 
         JButton convertButton = new JButton("Convert");
-        convertButton.addActionListener(e -> convertToXls());
+        convertButton.addActionListener(e -> {
+            try {
+                convertToXls();
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
+        });
 
         // 保存和讀取按鈕
         JButton saveButton = new JButton("Save");
@@ -137,7 +143,7 @@ public class TxtToXlsConverter extends JFrame {
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
-    private void convertToXls() {
+    private void convertToXls() throws Exception {
         String filePath = filePathField.getText();
         if (filePath.isEmpty() || filePath.equals("【Drag and Drop a File Here】.....check條件，必須緊湊，例如:A;B; ;regex(放regex格式);")) {
             JOptionPane.showMessageDialog(this, "Please drag and drop a file first!");
@@ -145,65 +151,7 @@ public class TxtToXlsConverter extends JFrame {
         }
 
         List<ByteColumnConfig> columnConfigs = new ArrayList<>();
-        for (int i = 0; i < tableModel.getRowCount(); i++) {
-            Object fromObj = tableModel.getValueAt(i, 0);
-            Object toObj = tableModel.getValueAt(i, 1);
-            Object textObj = tableModel.getValueAt(i, 2);
-            Object checkObj = tableModel.getValueAt(i, 3);
-
-            // 檢查是否所有欄位都為空，若是則跳過此列
-            if ((fromObj == null || fromObj.toString().trim().isEmpty()) &&
-                    (toObj == null || toObj.toString().trim().isEmpty()) &&
-                    (textObj == null || textObj.toString().trim().isEmpty()) &&
-                    (checkObj == null || checkObj.toString().trim().isEmpty())) {
-                continue; // 若整列都是空的，跳過該列
-            }
-
-            int from = 0;
-            int to = 0;
-            String text = "";
-            String check = "";
-
-            // 解析 `from` 欄位
-            try {
-                if (fromObj instanceof Integer) {
-                    from = (Integer) fromObj;
-                } else if (fromObj instanceof String && !((String) fromObj).trim().isEmpty()) {
-                    from = Integer.parseInt((String) fromObj);
-                }
-            } catch (NumberFormatException e) {
-                // 顯示例外訊息到控制台和 MsgBox
-                System.out.println("解析 from 欄位時發生錯誤: " + e.getMessage());
-                JOptionPane.showMessageDialog(null, "解析 from 欄位時發生錯誤: " + e.getMessage());
-                return; // 結束處理
-            }
-
-            // 解析 `to` 欄位
-            try {
-                if (toObj instanceof Integer) {
-                    to = (Integer) toObj;
-                } else if (toObj instanceof String && !((String) toObj).trim().isEmpty()) {
-                    to = Integer.parseInt((String) toObj);
-                } else {
-                    to = from; // 如果 toByteColumn 無效或為空，設為 fromByteColumn
-                }
-            } catch (NumberFormatException e) {
-                // 顯示例外訊息到控制台和 MsgBox
-                System.out.println("解析 to 欄位時發生錯誤: " + e.getMessage());
-                JOptionPane.showMessageDialog(null, "解析 to 欄位時發生錯誤: " + e.getMessage());
-                return; // 結束處理
-            }
-
-            // 確保文字與條件欄位為字串
-            if (textObj != null) {
-                text = textObj.toString().trim();
-            }
-            if (checkObj != null) {
-                check = checkObj.toString().trim();
-            }
-
-            columnConfigs.add(new ByteColumnConfig(from, to, text, check));
-        }
+        columnConfigs = getByteColumnConfigs();
 
         // 寫入 XLS
         try {
@@ -470,12 +418,14 @@ public class TxtToXlsConverter extends JFrame {
         if (userSelection == JFileChooser.APPROVE_OPTION) {
             File fileToSave = fileChooser.getSelectedFile();
             ObjectMapper objectMapper = new ObjectMapper();
-            List<ByteColumnConfig> columnConfigs = getByteColumnConfigs();
+
             try {
+                List<ByteColumnConfig> columnConfigs = getByteColumnConfigs();
                 objectMapper.writerWithDefaultPrettyPrinter().writeValue(fileToSave, columnConfigs);
                 JOptionPane.showMessageDialog(this, "Configuration saved successfully to " + fileToSave.getAbsolutePath());
-            } catch (IOException e) {
+            } catch (Exception e) {
                 JOptionPane.showMessageDialog(this, "Error saving configuration: " + e.getMessage());
+
             }
         }
     }
@@ -503,55 +453,105 @@ public class TxtToXlsConverter extends JFrame {
         }
     }
 
-    private List<ByteColumnConfig> getByteColumnConfigs() {
+    private List<ByteColumnConfig> getByteColumnConfigs() throws Exception {
         List<ByteColumnConfig> columnConfigs = new ArrayList<>();
+
+        int rowCount = tableModel.getRowCount();
         for (int i = 0; i < tableModel.getRowCount(); i++) {
             Object fromObj = tableModel.getValueAt(i, 0);
             Object toObj = tableModel.getValueAt(i, 1);
             Object textObj = tableModel.getValueAt(i, 2);
-            Object checkObj = tableModel.getValueAt(i, 3); // 添加這一行
+            Object checkObj = tableModel.getValueAt(i, 3);
 
             // 檢查是否所有欄位都為空，若是則跳過此列
-            if ((fromObj == null || fromObj.toString().trim().isEmpty()) &&
-                    (toObj == null || toObj.toString().trim().isEmpty()) &&
-                    (textObj == null || textObj.toString().trim().isEmpty()) &&
-                    (checkObj == null || checkObj.toString().trim().isEmpty())) { // 修改這一行
+            if (isRowEmpty(fromObj, toObj, textObj, checkObj)) {
                 continue; // 若整列都是空的，跳過該列
             }
 
-            int from = 0;
-            Integer to = null; // 這樣預設才會是 null
+            Integer from = null;
+            Integer to = null;
             String text = "";
-            String check = ""; // 添加這一行
+            String check = "";
 
-            // 確認資料類型後進行轉換
-            if (fromObj instanceof Integer) {
-                from = (Integer) fromObj;
-            } else if (fromObj instanceof String && !((String) fromObj).trim().isEmpty()) {
-                from = Integer.parseInt((String) fromObj);
-            }
+            // 解析 from 欄位
+            from  = getIntegerFromObject(fromObj);
 
-            if (toObj instanceof Integer) {
-                to = (Integer) toObj;
-            } else if (toObj instanceof String && !((String) toObj).trim().isEmpty()) {
-                to = Integer.parseInt((String) toObj);
-                System.out.println(to);
-            }
+            // 解析 to 欄位
+            to =  getIntegerFromObject(toObj);
 
+            // 解析 text 欄位
             if (textObj != null) {
-                text = textObj.toString().trim(); // 確保 text 是字串並去除空格
+                text = textObj.toString().trim();
             }
 
+            // 解析 check 欄位
             if (checkObj != null) {
-                check = checkObj.toString().trim(); // 確保 check 是字串並去除空格
+                check = checkObj.toString().trim();
             }
 
-            columnConfigs.add(new ByteColumnConfig(from, to, text, check)); // 添加 check 參數
+            // 如果 to 為 null， 【1. 若最後跳提示 應該填入to欄】  【2.若非最後則自動協助判斷並帶入】
+            if (to == null) {
+                // if to null 且 next row 的 from 沒有填值，則  to = from;
+                // if to null 且 next row 的 from 有填值，則依照下面去替換
+                // row 2,  from = 10, to = null
+                // row 3,  from = 11, to = null 則 row 2 to 應該是 10
+                // row 4,  from = 15, to = null  則 row 3 to 應該是 14
+                if( i + 1 < rowCount){ // 要先確保 row 數量充足，當然可能新增五六個都沒填資料
+                    fromObj = tableModel.getValueAt(i + 1, 0);
+                    Integer tmp_newFrom = getIntegerFromObject(fromObj);
+                    if ( tmp_newFrom == null ){
+                        throw new Exception("應該填入最後的 toColumn 儲存失敗");
+                    }else{
+                        to = tmp_newFrom - 1 ;
+                    }
+                }else if (i+1 == rowCount){ //不要懷疑就是 i+1 不能改，改了會錯，最後不填變成可null (不合理)。
+                    throw new Exception("應該填入最後的 toColumn 儲存失敗");
+                }
+
+            }
+
+            columnConfigs.add(new ByteColumnConfig(from, to, text, check));
         }
         return columnConfigs;
     }
 
+    // 輔助方法來檢查一行是否為空
+    private boolean isRowEmpty(Object... objs) {
+        for (Object obj : objs) {
+            if (obj != null && !obj.toString().trim().isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
 
+    /**
+     * 嘗試將傳入的物件轉換為 Integer 類型。
+     *
+     * @param obj 要轉換的物件，可以是 Integer 或非空的 String
+     * @return 轉換後的 Integer 值，如果轉換失敗則返回 null
+     */
+    public static Integer getIntegerFromObject(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+
+        try {
+            if (obj instanceof Integer) {
+                return (Integer) obj;
+            } else if (obj instanceof String) {
+                String str = ((String) obj).trim();
+                if (!str.isEmpty()) {
+                    return Integer.parseInt(str);
+                }
+            }
+        } catch (NumberFormatException e) {
+            System.out.println("解析欄位時發生錯誤: " + e.getMessage());
+            JOptionPane.showMessageDialog(null, "解析欄位時發生錯誤: " + e.getMessage());
+        }
+
+        return null;
+    }
 
 
     static class ByteColumnConfig {
