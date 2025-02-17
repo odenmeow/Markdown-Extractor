@@ -40,7 +40,7 @@ public class MarkdownExtractorGUI extends JFrame {
     private Tab4_imageCompressor tab4; // 定義 tab4
 
     public MarkdownExtractorGUI() {
-        setTitle("Markdown Extractor");
+        setTitle("Markdown Extractor v1.0");
         setSize(650, 450);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
@@ -1776,36 +1776,28 @@ public class MarkdownExtractorGUI extends JFrame {
                         }
                         updatedContent.append(content.substring(lastIndex));
 
-                        // 產生唯一的臨時檔名（利用原始完整路徑計算 hash）
-                        String originalPath = inputFile.getAbsolutePath();
-                        String uniqueSuffix = "_" + Integer.toHexString(originalPath.hashCode());
-                        String tempMdName = inputFile.getName().replace(".md", "") + uniqueSuffix + ".md";
+                        // 將原始完整路徑當作 mapping 的 key
+                        String originalPath = inputFile.getCanonicalPath();
+                        // 儲存 mapping (這裡直接使用原始路徑)
+                        GPT_tempMdMapping.put(originalPath, originalPath);
+                        // 同時記錄處理後圖片的資訊
+                        processedImagesMap.put(originalPath, eachMarkdownOldImageUrls);
 
-                        // 記錄 mapping：臨時檔名 -> 原始完整路徑
-                        GPT_tempMdMapping.put(tempMdName, originalPath);
-                        // 以唯一檔名作為 key 存入 processedImagesMap
-                        processedImagesMap.put(tempMdName, eachMarkdownOldImageUrls);
-
-//                        if (!outputModel.contains(tempMdName)) {
-//                            outputModel.addElement(tempMdName);
-//                        }
-
-                        // 處理完畢後 顯示以處理的文件  路徑 + 名稱。   後續要不要替換 那是 replace and go 的問題
-                        //ＧＰＴ　hint:
-                        String displayStr = tempMdName + " (" + originalPath + ")";
-                        if (!outputModel.contains(displayStr)) {
-                            outputModel.addElement(displayStr);
+                        // 將顯示結果設為原始完整路徑（這就是你看到的 "C:\Users\John\Projects\MyRepo\README.md"）
+                        if (!outputModel.contains(originalPath)) {
+                            outputModel.addElement(originalPath);
                         }
 
+                        // 寫入臨時檔案時，由於不能直接使用完整路徑作為檔名，進行簡單替換
+                        String safeName = originalPath.replaceAll("[\\\\/:*?\"<>|]", "_");
                         File tempMdFolder = new File(outputFolder, "temp_md_files");
                         if (!tempMdFolder.exists()) {
                             tempMdFolder.mkdirs();
                         }
-                        File tempMdOutput = new File(tempMdFolder, tempMdName);
+                        File tempMdOutput = new File(tempMdFolder, safeName);
                         try (BufferedWriter writer = Files.newBufferedWriter(tempMdOutput.toPath())) {
                             writer.write(updatedContent.toString());
                         }
-                        processedFiles.add(tempMdName);
                     } catch (IOException e) {
                         e.printStackTrace();
                         failedFiles.add(inputFile.getName());
@@ -1901,11 +1893,22 @@ public class MarkdownExtractorGUI extends JFrame {
         private void GPT_replaceMarkdownFiles(File outputFolder, File tempMdFolder, File trashMdFolder, File trashPngFolder) {
             if (tempMdFolder.listFiles() == null) return;
             for (File tempMdFile : tempMdFolder.listFiles()) {
-                String tempMdName = tempMdFile.getName();
-                // 根據 mapping 取得原始 .md 文件的完整路徑
-                String originalMdFilePath = GPT_tempMdMapping.get(tempMdName);
+                // 我們先從 tempMdFile 的名稱還原一個「safeName」
+                String safeName = tempMdFile.getName();
+                // 接著從 mapping 中查找原始完整路徑
+                // 假設 safeName 是用 originalPath.replaceAll("[\\\\/:*?\"<>|]", "_") 產生的，
+                // 你可以遍歷 GPT_tempMdMapping，找到對應 safeName 的項目（或直接將 mapping key 存為原始完整路徑）
+                // 這裡我們直接假設 mapping 的 key 就是原始完整路徑，故直接遍歷看看哪個值的 safeName 相符
+                String originalMdFilePath = null;
+                for (String key : GPT_tempMdMapping.keySet()) {
+                    String testSafeName = key.replaceAll("[\\\\/:*?\"<>|]", "_");
+                    if (testSafeName.equals(safeName)) {
+                        originalMdFilePath = key;
+                        break;
+                    }
+                }
                 if (originalMdFilePath == null) {
-                    JOptionPane.showMessageDialog(ancestorWindow, "Original markdown file not found for: " + tempMdName);
+                    JOptionPane.showMessageDialog(ancestorWindow, "Original markdown file not found for safe name: " + safeName);
                     continue;
                 }
                 File originalMdFile = new File(originalMdFilePath);
@@ -1916,8 +1919,8 @@ public class MarkdownExtractorGUI extends JFrame {
                     // 替換原始 .md 文件
                     Files.copy(tempMdFile.toPath(), originalMdFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-                    // 備份並刪除原始 .png 圖片（使用 processedImagesMap 的 key 為 tempMdName）
-                    List<String> oldImageUrls = processedImagesMap.get(tempMdName);
+                    // 備份並刪除原始 .png 圖片（使用 processedImagesMap 的 key 為 originalPath）
+                    List<String> oldImageUrls = processedImagesMap.get(originalMdFilePath);
                     if (oldImageUrls != null) {
                         for (String url : oldImageUrls) {
                             File pngFile = new File(url);
@@ -1938,7 +1941,6 @@ public class MarkdownExtractorGUI extends JFrame {
                 }
             }
         }
-
 
         public void replaceAndGO() {
             if (outputListModel.isEmpty()) {
