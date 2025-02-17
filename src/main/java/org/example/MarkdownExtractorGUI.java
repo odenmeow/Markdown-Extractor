@@ -1118,6 +1118,9 @@ public class MarkdownExtractorGUI extends JFrame {
         private String defaultImgFolderPath;  // 保存預設 Central Img Folder 路徑
         private JCheckBox centralImgFolderSaveAsDefaultBox;
 
+        // 在 Tab4_imageCompressor 類中新增 mapping（請放在其他 field 宣告區）
+        private Map<String, String> GPT_tempMdMapping = new HashMap<>();
+
         // 載入 config.properties 文件
         private void loadConfig() {
             Properties props = new Properties();
@@ -1669,6 +1672,71 @@ public class MarkdownExtractorGUI extends JFrame {
                 String inputPath = inputImageModel.getElementAt(i);
                 File inputFile = new File(inputPath);
 
+//                if (inputFile.getName().endsWith(".md")) {
+//                    try {
+//                        String content = new String(Files.readAllBytes(inputFile.toPath()));
+//                        Matcher markdownMatcher = MARKDOWN_IMAGE_PATTERN.matcher(content);
+//                        StringBuilder updatedContent = new StringBuilder();
+//                        int lastIndex = 0;
+//                        List<String> eachMarkdownOldImageUrls = new ArrayList<>();
+//
+//                        while (markdownMatcher.find()) {
+//                            updatedContent.append(content, lastIndex, markdownMatcher.start(1));
+//                            String imageUrl = markdownMatcher.group(1);
+//
+//                            if (imageUrl.endsWith(".png")) {
+//                                File imageFile = new File(inputFile.getParent(), imageUrl);
+//                                if (imageFile.exists()) {
+//                                    // 壓縮圖片
+//                                    if (onlyTodayCheckBox.isSelected() && imageUrl.contains(todayDate)) {
+//                                        compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
+//                                        String newImageUrl = imageUrl.replace(".png", ".webp");
+//                                        updatedContent.append(newImageUrl);
+//                                        eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
+//                                    } else if (!onlyTodayCheckBox.isSelected()) {
+//                                        compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
+//                                        String newImageUrl = imageUrl.replace(".png", ".webp");
+//                                        updatedContent.append(newImageUrl);
+//                                        eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
+//                                    } else {
+//                                        updatedContent.append(imageUrl);
+//                                    }
+//                                } else {
+//                                    System.out.println("圖片不存在：" + imageFile.getAbsolutePath());
+//                                    updatedContent.append(imageUrl);
+//                                }
+//                            } else {
+//                                updatedContent.append(imageUrl);
+//                            }
+//
+//                            lastIndex = markdownMatcher.end(1);
+//                        }
+//                        updatedContent.append(content.substring(lastIndex));
+//
+//                        processedImagesMap.put(inputFile.getName(), eachMarkdownOldImageUrls);
+//
+//                        if (!eachMarkdownOldImageUrls.isEmpty()) {
+//                            if (!outputModel.contains(inputFile.getName())) {
+//                                outputModel.addElement(inputFile.getName());
+//                            }
+//                            File tempMdFolder = new File(outputFolder, "temp_md_files");
+//                            if (!tempMdFolder.exists()) {
+//                                tempMdFolder.mkdirs();
+//                            }
+//
+//                            File tempMdOutput = new File(tempMdFolder, inputFile.getName());
+//                            try (BufferedWriter writer = Files.newBufferedWriter(tempMdOutput.toPath())) {
+//                                writer.write(updatedContent.toString());
+//                            }
+//                            processedFiles.add(inputFile.getName());
+//                        } else {
+//                            noNeedCompressMarkDownFiles.add(inputFile.getName());
+//                        }
+//                    } catch (IOException e) {
+//                        e.printStackTrace();
+//                        failedFiles.add(inputFile.getName());
+//                    }
+//                }
                 if (inputFile.getName().endsWith(".md")) {
                     try {
                         String content = new String(Files.readAllBytes(inputFile.toPath()));
@@ -1684,7 +1752,6 @@ public class MarkdownExtractorGUI extends JFrame {
                             if (imageUrl.endsWith(".png")) {
                                 File imageFile = new File(inputFile.getParent(), imageUrl);
                                 if (imageFile.exists()) {
-                                    // 壓縮圖片
                                     if (onlyTodayCheckBox.isSelected() && imageUrl.contains(todayDate)) {
                                         compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
                                         String newImageUrl = imageUrl.replace(".png", ".webp");
@@ -1705,30 +1772,32 @@ public class MarkdownExtractorGUI extends JFrame {
                             } else {
                                 updatedContent.append(imageUrl);
                             }
-
                             lastIndex = markdownMatcher.end(1);
                         }
                         updatedContent.append(content.substring(lastIndex));
 
-                        processedImagesMap.put(inputFile.getName(), eachMarkdownOldImageUrls);
+                        // 產生唯一的臨時檔名（利用原始完整路徑計算 hash）
+                        String originalPath = inputFile.getAbsolutePath();
+                        String uniqueSuffix = "_" + Integer.toHexString(originalPath.hashCode());
+                        String tempMdName = inputFile.getName().replace(".md", "") + uniqueSuffix + ".md";
 
-                        if (!eachMarkdownOldImageUrls.isEmpty()) {
-                            if (!outputModel.contains(inputFile.getName())) {
-                                outputModel.addElement(inputFile.getName());
-                            }
-                            File tempMdFolder = new File(outputFolder, "temp_md_files");
-                            if (!tempMdFolder.exists()) {
-                                tempMdFolder.mkdirs();
-                            }
+                        // 記錄 mapping：臨時檔名 -> 原始完整路徑
+                        GPT_tempMdMapping.put(tempMdName, originalPath);
+                        // 以唯一檔名作為 key 存入 processedImagesMap
+                        processedImagesMap.put(tempMdName, eachMarkdownOldImageUrls);
 
-                            File tempMdOutput = new File(tempMdFolder, inputFile.getName());
-                            try (BufferedWriter writer = Files.newBufferedWriter(tempMdOutput.toPath())) {
-                                writer.write(updatedContent.toString());
-                            }
-                            processedFiles.add(inputFile.getName());
-                        } else {
-                            noNeedCompressMarkDownFiles.add(inputFile.getName());
+                        if (!outputModel.contains(tempMdName)) {
+                            outputModel.addElement(tempMdName);
                         }
+                        File tempMdFolder = new File(outputFolder, "temp_md_files");
+                        if (!tempMdFolder.exists()) {
+                            tempMdFolder.mkdirs();
+                        }
+                        File tempMdOutput = new File(tempMdFolder, tempMdName);
+                        try (BufferedWriter writer = Files.newBufferedWriter(tempMdOutput.toPath())) {
+                            writer.write(updatedContent.toString());
+                        }
+                        processedFiles.add(tempMdName);
                     } catch (IOException e) {
                         e.printStackTrace();
                         failedFiles.add(inputFile.getName());
@@ -1820,7 +1889,47 @@ public class MarkdownExtractorGUI extends JFrame {
             }
         }
 
+        // GPT_replaceMarkdownFiles: 替換臨時處理過的 .md 文件至原始位置，依據 GPT_tempMdMapping 定位原始檔案
+        private void GPT_replaceMarkdownFiles(File outputFolder, File tempMdFolder, File trashMdFolder, File trashPngFolder) {
+            if (tempMdFolder.listFiles() == null) return;
+            for (File tempMdFile : tempMdFolder.listFiles()) {
+                String tempMdName = tempMdFile.getName();
+                // 根據 mapping 取得原始 .md 文件的完整路徑
+                String originalMdFilePath = GPT_tempMdMapping.get(tempMdName);
+                if (originalMdFilePath == null) {
+                    JOptionPane.showMessageDialog(ancestorWindow, "Original markdown file not found for: " + tempMdName);
+                    continue;
+                }
+                File originalMdFile = new File(originalMdFilePath);
+                try {
+                    // 備份原始 .md 文件至垃圾桶中的 md 資料夾
+                    File backupMdFile = new File(trashMdFolder, originalMdFile.getName());
+                    Files.copy(originalMdFile.toPath(), backupMdFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    // 替換原始 .md 文件
+                    Files.copy(tempMdFile.toPath(), originalMdFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
+                    // 備份並刪除原始 .png 圖片（使用 processedImagesMap 的 key 為 tempMdName）
+                    List<String> oldImageUrls = processedImagesMap.get(tempMdName);
+                    if (oldImageUrls != null) {
+                        for (String url : oldImageUrls) {
+                            File pngFile = new File(url);
+                            if (pngFile.exists()) {
+                                File backupPngFile = new File(trashPngFolder, pngFile.getName());
+                                Files.copy(pngFile.toPath(), backupPngFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                                if (!pngFile.delete()) {
+                                    JOptionPane.showMessageDialog(ancestorWindow, "無法刪除圖片: " + url);
+                                } else {
+                                    System.out.println("已刪除原始圖片: " + url);
+                                }
+                            }
+                        }
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    JOptionPane.showMessageDialog(ancestorWindow, "Failed to replace markdown file: " + originalMdFile.getName());
+                }
+            }
+        }
 
 
         public void replaceAndGO() {
@@ -1880,57 +1989,59 @@ public class MarkdownExtractorGUI extends JFrame {
             }
 
             // 替換 .md 文件（應替換原始的 .md 文件）
-            if (tempMdFolder.exists() && tempMdFolder.listFiles() != null) {
-                for (File tempMdFile : tempMdFolder.listFiles()) {
-                    // 從 inputImageModel 中找到對應的原始 .md 文件
-                    String originalMdFilePath = findOriginalMdFile(tempMdFile.getName());
-                    if (originalMdFilePath == null) {
-                        JOptionPane.showMessageDialog(ancestorWindow, "Original markdown file not found for: " + tempMdFile.getName());
-                        continue;
-                    }
-                    File originalMdFile = new File(originalMdFilePath);
-                    try {
-                        // 備份原始的 .md 文件到垃圾桶中的 md 資料夾
-                        File backupMdFile = new File(trashMdFolder, originalMdFile.getName());
-                        Files.copy(originalMdFile.toPath(), backupMdFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-                        // 用臨時處理的 .md 文件替換原始文件
-                        Files.copy(tempMdFile.toPath(), originalMdFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-                        // 使用 lambda 表達式備份並刪除對應的原始 .png 圖片
-                        List<String> oldImageUrls = processedImagesMap.get(originalMdFile.getName());
-                        if (oldImageUrls != null) {
-                            oldImageUrls.forEach(url -> {
-                                File pngFile = new File(url);
-                                if (pngFile.exists()) {
-                                    try {
-                                        // 備份 .png 文件到垃圾桶中的 png 資料夾
-                                        File backupPngFile = new File(trashPngFolder, pngFile.getName());
-                                        Files.copy(pngFile.toPath(), backupPngFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-                                        boolean deleted = pngFile.delete();
-                                        if (deleted) {
-                                            System.out.println("已刪除原始圖片: " + url);
-                                        } else {
-                                            System.err.println("無法刪除圖片: " + url);
-                                            JOptionPane.showMessageDialog(ancestorWindow, "無法刪除圖片: " + url);
-                                        }
-                                    } catch (IOException e) {
-                                        e.printStackTrace();
-                                        JOptionPane.showMessageDialog(ancestorWindow, "Failed to backup .png file: " + pngFile.getAbsolutePath());
-                                    }
-                                } else {
-                                    System.err.println("找不到圖片: " + url);
-                                }
-                            });
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        JOptionPane.showMessageDialog(ancestorWindow, "Failed to replace markdown file: " + originalMdFile.getName());
-                    }
+//            if (tempMdFolder.exists() && tempMdFolder.listFiles() != null) {
+//                for (File tempMdFile : tempMdFolder.listFiles()) {
+//                    // 從 inputImageModel 中找到對應的原始 .md 文件
+//                    String originalMdFilePath = findOriginalMdFile(tempMdFile.getName());
+//                    if (originalMdFilePath == null) {
+//                        JOptionPane.showMessageDialog(ancestorWindow, "Original markdown file not found for: " + tempMdFile.getName());
+//                        continue;
+//                    }
+//                    File originalMdFile = new File(originalMdFilePath);
+//                    try {
+//                        // 備份原始的 .md 文件到垃圾桶中的 md 資料夾
+//                        File backupMdFile = new File(trashMdFolder, originalMdFile.getName());
+//                        Files.copy(originalMdFile.toPath(), backupMdFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+//
+//                        // 用臨時處理的 .md 文件替換原始文件
+//                        Files.copy(tempMdFile.toPath(), originalMdFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+//
+//                        // 使用 lambda 表達式備份並刪除對應的原始 .png 圖片
+//                        List<String> oldImageUrls = processedImagesMap.get(originalMdFile.getName());
+//                        if (oldImageUrls != null) {
+//                            oldImageUrls.forEach(url -> {
+//                                File pngFile = new File(url);
+//                                if (pngFile.exists()) {
+//                                    try {
+//                                        // 備份 .png 文件到垃圾桶中的 png 資料夾
+//                                        File backupPngFile = new File(trashPngFolder, pngFile.getName());
+//                                        Files.copy(pngFile.toPath(), backupPngFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+//
+//                                        boolean deleted = pngFile.delete();
+//                                        if (deleted) {
+//                                            System.out.println("已刪除原始圖片: " + url);
+//                                        } else {
+//                                            System.err.println("無法刪除圖片: " + url);
+//                                            JOptionPane.showMessageDialog(ancestorWindow, "無法刪除圖片: " + url);
+//                                        }
+//                                    } catch (IOException e) {
+//                                        e.printStackTrace();
+//                                        JOptionPane.showMessageDialog(ancestorWindow, "Failed to backup .png file: " + pngFile.getAbsolutePath());
+//                                    }
+//                                } else {
+//                                    System.err.println("找不到圖片: " + url);
+//                                }
+//                            });
+//                        }
+//                    } catch (IOException e) {
+//                        e.printStackTrace();
+//                        JOptionPane.showMessageDialog(ancestorWindow, "Failed to replace markdown file: " + originalMdFile.getName());
+//                    }
+//                }
+//            }
+                if (tempMdFolder.exists() && tempMdFolder.listFiles() != null) {
+                    GPT_replaceMarkdownFiles(new File(outputFolder), tempMdFolder, trashMdFolder, trashPngFolder);
                 }
-            }
-
                 // 刪除臨時資料夾
                 try {
                     // img 資料夾
