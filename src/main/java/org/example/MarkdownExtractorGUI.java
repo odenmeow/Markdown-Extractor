@@ -1749,7 +1749,12 @@ public class MarkdownExtractorGUI extends JFrame {
                             updatedContent.append(content, lastIndex, markdownMatcher.start(1));
                             String imageUrl = markdownMatcher.group(1);
 
-                            if (imageUrl.endsWith(".png")) {
+                            // 如果已是 webp，直接保留原內容
+                            if (imageUrl.toLowerCase().endsWith(".webp")) {
+                                updatedContent.append(imageUrl);
+                            }
+                            // 處理 PNG 圖片
+                            else if (imageUrl.toLowerCase().endsWith(".png")) {
                                 File imageFile = new File(inputFile.getParent(), imageUrl);
                                 if (imageFile.exists()) {
                                     if (onlyTodayCheckBox.isSelected() && imageUrl.contains(todayDate)) {
@@ -1763,6 +1768,7 @@ public class MarkdownExtractorGUI extends JFrame {
                                         updatedContent.append(newImageUrl);
                                         eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
                                     } else {
+                                        // 如果 Only Today 被勾選但檔名不含今天日期，則不處理該圖片
                                         updatedContent.append(imageUrl);
                                     }
                                 } else {
@@ -1770,33 +1776,37 @@ public class MarkdownExtractorGUI extends JFrame {
                                     updatedContent.append(imageUrl);
                                 }
                             } else {
+                                // 其他格式直接保留原內容
                                 updatedContent.append(imageUrl);
                             }
                             lastIndex = markdownMatcher.end(1);
                         }
                         updatedContent.append(content.substring(lastIndex));
 
-                        // 將原始完整路徑當作 mapping 的 key
-                        String originalPath = inputFile.getCanonicalPath();
-                        // 儲存 mapping (這裡直接使用原始路徑)
-                        GPT_tempMdMapping.put(originalPath, originalPath);
-                        // 同時記錄處理後圖片的資訊
-                        processedImagesMap.put(originalPath, eachMarkdownOldImageUrls);
+                        // 如果該檔案內沒有任何 PNG 需要處理，就不建立臨時檔，並加入自動剔除的清單
+                        if (eachMarkdownOldImageUrls.isEmpty()) {
+                            noNeedCompressMarkDownFiles.add(inputFile.getCanonicalPath());
+                        } else {
+                            String originalPath = inputFile.getCanonicalPath();
+                            // 使用完整路徑作為 mapping 的 key
+                            GPT_tempMdMapping.put(originalPath, originalPath);
+                            processedImagesMap.put(originalPath, eachMarkdownOldImageUrls);
 
-                        // 將顯示結果設為原始完整路徑（這就是你看到的 "C:\Users\John\Projects\MyRepo\README.md"）
-                        if (!outputModel.contains(originalPath)) {
-                            outputModel.addElement(originalPath);
-                        }
+                            if (!outputModel.contains(originalPath)) {
+                                outputModel.addElement(originalPath);
+                            }
 
-                        // 寫入臨時檔案時，由於不能直接使用完整路徑作為檔名，進行簡單替換
-                        String safeName = originalPath.replaceAll("[\\\\/:*?\"<>|]", "_");
-                        File tempMdFolder = new File(outputFolder, "temp_md_files");
-                        if (!tempMdFolder.exists()) {
-                            tempMdFolder.mkdirs();
-                        }
-                        File tempMdOutput = new File(tempMdFolder, safeName);
-                        try (BufferedWriter writer = Files.newBufferedWriter(tempMdOutput.toPath())) {
-                            writer.write(updatedContent.toString());
+                            // 為了寫入臨時檔案，將完整路徑轉換為安全檔名
+                            String safeName = originalPath.replaceAll("[\\\\/:*?\"<>|]", "_");
+                            File tempMdFolder = new File(outputFolder, "temp_md_files");
+                            if (!tempMdFolder.exists()) {
+                                tempMdFolder.mkdirs();
+                            }
+                            File tempMdOutput = new File(tempMdFolder, safeName);
+                            try (BufferedWriter writer = Files.newBufferedWriter(tempMdOutput.toPath())) {
+                                writer.write(updatedContent.toString());
+                            }
+                            processedFiles.add(originalPath);
                         }
                     } catch (IOException e) {
                         e.printStackTrace();
