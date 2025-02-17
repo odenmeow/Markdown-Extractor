@@ -1786,9 +1786,17 @@ public class MarkdownExtractorGUI extends JFrame {
                         // 以唯一檔名作為 key 存入 processedImagesMap
                         processedImagesMap.put(tempMdName, eachMarkdownOldImageUrls);
 
-                        if (!outputModel.contains(tempMdName)) {
-                            outputModel.addElement(tempMdName);
+//                        if (!outputModel.contains(tempMdName)) {
+//                            outputModel.addElement(tempMdName);
+//                        }
+
+                        // 處理完畢後 顯示以處理的文件  路徑 + 名稱。   後續要不要替換 那是 replace and go 的問題
+                        //ＧＰＴ　hint:
+                        String displayStr = tempMdName + " (" + originalPath + ")";
+                        if (!outputModel.contains(displayStr)) {
+                            outputModel.addElement(displayStr);
                         }
+
                         File tempMdFolder = new File(outputFolder, "temp_md_files");
                         if (!tempMdFolder.exists()) {
                             tempMdFolder.mkdirs();
