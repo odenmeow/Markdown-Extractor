@@ -40,7 +40,7 @@ public class MarkdownExtractorGUI extends JFrame {
     private Tab4_imageCompressor tab4; // 定義 tab4
 
     public MarkdownExtractorGUI() {
-        setTitle("Markdown Extractor v1.0");
+        setTitle("Markdown Extractor v1.1");
         setSize(650, 450);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
