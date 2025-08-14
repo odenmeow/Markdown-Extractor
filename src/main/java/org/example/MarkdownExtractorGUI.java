@@ -38,9 +38,14 @@ public class MarkdownExtractorGUI extends JFrame {
     private Tab2_autoRestoreRelativeURL tab2; // 定義 tab2
     private Tab3_createOutlineTable tab3; // 定義 tab3
     private Tab4_imageCompressor tab4; // 定義 tab4
+    public static final String CONFIG_FILE = "config.properties"; // 全域共用設定檔
+    public static final String APP_Version = "Markdown Extractor v1.2";
+    // 1.2 版本修正 OutLineCreator 對於 # region 、 # endregion 的誤判 ， 改進功能。
+    // 1.1 版本修正 可正式使用，排除99.99問題 (同名稱的檔案不會搞混了)，剩下的應該只有小功能想不想要imporve。ㄆ
+
 
     public MarkdownExtractorGUI() {
-        setTitle("Markdown Extractor v1.1");
+        setTitle(APP_Version);
         setSize(650, 450);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
@@ -789,11 +794,11 @@ public class MarkdownExtractorGUI extends JFrame {
         // 檢查圖片路徑是否正確
         private boolean isImagePathValid(File mdFileParent, String imagePath) {
 
-        //  不可以使用，因為下面這種方式會誤判，明明圖片URL路徑是正確，卻印出說有錯誤。
-        //  File imageFile = new File(mdFileParent, imagePath);
-        //  return imageFile.exists() && imageFile.getParentFile().equals(imagesFolder);
+            //  不可以使用，因為下面這種方式會誤判，明明圖片URL路徑是正確，卻印出說有錯誤。
+            //  File imageFile = new File(mdFileParent, imagePath);
+            //  return imageFile.exists() && imageFile.getParentFile().equals(imagesFolder);
 
-        // 下面才是正確的作法
+            // 下面才是正確的作法
             File imageFile = new File(mdFileParent, imagePath);
             try {
                 // 如果圖片路徑是相對路徑，將其轉換為絕對路徑來檢查
@@ -1117,6 +1122,7 @@ public class MarkdownExtractorGUI extends JFrame {
         private String defaultGitRootPath;  // 保存預設 Git 根目錄
         private String defaultImgFolderPath;  // 保存預設 Central Img Folder 路徑
         private JCheckBox centralImgFolderSaveAsDefaultBox;
+        private JTextField onlyDaysField;   // NEW
 
         // 在 Tab4_imageCompressor 類中新增 mapping（請放在其他 field 宣告區）
         private Map<String, String> GPT_tempMdMapping = new HashMap<>();
@@ -1248,7 +1254,9 @@ public class MarkdownExtractorGUI extends JFrame {
             JScrollPane inputScrollPane = new JScrollPane(inputImageList);
 
             // 添加清空按鈕和 Only Today 勾選框
-            onlyTodayCheckBox = new JCheckBox("Only Today", true);
+            // 20250814 onlyToday 保留但是文字改成 only
+            onlyTodayCheckBox = new JCheckBox("Only ", true);
+            onlyDaysField = new JTextField("0", 2); // 預設 0 -> 只比對今天
             JButton clearButton = new JButton("Clear Input & Output");
             clearButton.addActionListener(e -> {
                 inputImageModel.clear();  // 清空輸入圖片列表
@@ -1256,10 +1264,14 @@ public class MarkdownExtractorGUI extends JFrame {
                 outputModel.clear(); // images 的輸出顯示區 多列
                 JOptionPane.showMessageDialog(ancestorWindow, "Input images and output folder cleared.");
             });
+            JPanel onlyPanel = new JPanel(new GridBagLayout());
+            onlyPanel.add(onlyTodayCheckBox);
+            onlyPanel.add(onlyDaysField);
+            onlyPanel.add(new JLabel(" day(s)"));
 
             JPanel inputPanelTitle = new JPanel(new BorderLayout());
             inputPanelTitle.add(inputLabel, BorderLayout.WEST);
-            inputPanelTitle.add(onlyTodayCheckBox, BorderLayout.CENTER);
+            inputPanelTitle.add(onlyPanel, BorderLayout.CENTER);
             inputPanelTitle.add(clearButton, BorderLayout.EAST);
 
             inputPanel.add(inputPanelTitle, BorderLayout.NORTH);
@@ -1744,7 +1756,17 @@ public class MarkdownExtractorGUI extends JFrame {
                         StringBuilder updatedContent = new StringBuilder();
                         int lastIndex = 0;
                         List<String> eachMarkdownOldImageUrls = new ArrayList<>();
-
+                        // ===== INSERT START: Only N day(s) 一次性計算 =====
+                        int n;
+                        try {
+                            n = Integer.parseInt(onlyDaysField.getText().trim());
+                            if (n < 0) n = 0;
+                            if (n > 30) n = 30; // 合理上限，避免誤輸入
+                        } catch (NumberFormatException ex) {
+                            n = 0; // 解析失敗就當 0（只今天）
+                        }
+                        List<String> recentDates = buildRecentDateStrings(n); // 產生 yyyy-MM-dd / yyyy/MM/dd / yyyyMMdd
+                        // ===== INSERT END =====
                         while (markdownMatcher.find()) {
                             updatedContent.append(content, lastIndex, markdownMatcher.start(1));
                             String imageUrl = markdownMatcher.group(1);
@@ -1757,20 +1779,28 @@ public class MarkdownExtractorGUI extends JFrame {
                             else if (imageUrl.toLowerCase().endsWith(".png")) {
                                 File imageFile = new File(inputFile.getParent(), imageUrl);
                                 if (imageFile.exists()) {
-                                    if (onlyTodayCheckBox.isSelected() && imageUrl.contains(todayDate)) {
+
+                                    // ===== REPLACE START: 用多日期清單比對 =====
+                                    if (onlyTodayCheckBox.isSelected() && urlContainsAnyDate(imageUrl, recentDates)) {
+                                        // 勾選 + 檔名含最近 N 天之一：壓縮
                                         compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
                                         String newImageUrl = imageUrl.replace(".png", ".webp");
                                         updatedContent.append(newImageUrl);
                                         eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
+
                                     } else if (!onlyTodayCheckBox.isSelected()) {
+                                        // 未勾選：全時段皆壓縮（原行為）
                                         compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
                                         String newImageUrl = imageUrl.replace(".png", ".webp");
                                         updatedContent.append(newImageUrl);
                                         eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
+
                                     } else {
-                                        // 如果 Only Today 被勾選但檔名不含今天日期，則不處理該圖片
+                                        // 勾選 + 檔名不含最近 N 天：跳過
                                         updatedContent.append(imageUrl);
                                     }
+                                    // ===== REPLACE END =====
+
                                 } else {
                                     System.out.println("圖片不存在：" + imageFile.getAbsolutePath());
                                     updatedContent.append(imageUrl);
@@ -2059,29 +2089,29 @@ public class MarkdownExtractorGUI extends JFrame {
 //                    }
 //                }
 //            }
-                if (tempMdFolder.exists() && tempMdFolder.listFiles() != null) {
-                    GPT_replaceMarkdownFiles(new File(outputFolder), tempMdFolder, trashMdFolder, trashPngFolder);
-                }
-                // 刪除臨時資料夾
-                try {
-                    // img 資料夾
-                    if (tempProcessFolder.exists()) {
-                        deleteDirectoryRecursively(tempProcessFolder.toPath());
-                    }
-                    // .md 資料夾
-                    if (tempMdFolder.exists()) {
-                        deleteDirectoryRecursively(tempMdFolder.toPath());
-                    }
-
-                    // 嘗試將 Trash_Backup 資料夾移動到回收桶
-                    if (trashFolder.exists()) {
-                        moveToTrash(trashFolder);
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    JOptionPane.showMessageDialog(ancestorWindow, "Failed to delete temporary process folder.");
-                }
+            if (tempMdFolder.exists() && tempMdFolder.listFiles() != null) {
+                GPT_replaceMarkdownFiles(new File(outputFolder), tempMdFolder, trashMdFolder, trashPngFolder);
             }
+            // 刪除臨時資料夾
+            try {
+                // img 資料夾
+                if (tempProcessFolder.exists()) {
+                    deleteDirectoryRecursively(tempProcessFolder.toPath());
+                }
+                // .md 資料夾
+                if (tempMdFolder.exists()) {
+                    deleteDirectoryRecursively(tempMdFolder.toPath());
+                }
+
+                // 嘗試將 Trash_Backup 資料夾移動到回收桶
+                if (trashFolder.exists()) {
+                    moveToTrash(trashFolder);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(ancestorWindow, "Failed to delete temporary process folder.");
+            }
+        }
 
         // 將文件或文件夾移動到資源回收桶，並在失敗時提示用戶
         private void moveToTrash(File file) {
@@ -2149,7 +2179,22 @@ public class MarkdownExtractorGUI extends JFrame {
                     .forEach(File::delete);
         }
 
+        // 放在 Tab4 類別裡（與其他私有方法同層級）
+        private List<String> buildRecentDateStrings(int nInclusive) {
+            // nInclusive = 0 -> [今天]；1 -> [今天, 昨天]；2 -> [今天, 昨天, 前天]...
+            List<String> list = new ArrayList<>();
+            for (int i = 0; i <= Math.max(0, nInclusive); i++) {
+                list.add(java.time.LocalDate.now().minusDays(i).toString());
+            }
+            return list;
+        }
 
+        private boolean urlContainsAnyDate(String url, List<String> dates) {
+            for (String d : dates) {
+                if (url.contains(d)) return true;
+            }
+            return false;
+        }
     }
 
 
