@@ -1761,7 +1761,6 @@ public class MarkdownExtractorGUI extends JFrame {
                         try {
                             n = Integer.parseInt(onlyDaysField.getText().trim());
                             if (n < 0) n = 0;
-                            if (n > 30) n = 30; // 合理上限，避免誤輸入
                         } catch (NumberFormatException ex) {
                             n = 0; // 解析失敗就當 0（只今天）
                         }
