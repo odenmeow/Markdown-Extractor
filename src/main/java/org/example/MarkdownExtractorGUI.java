@@ -39,9 +39,10 @@ public class MarkdownExtractorGUI extends JFrame {
     private Tab3_createOutlineTable tab3; // 定義 tab3
     private Tab4_imageCompressor tab4; // 定義 tab4
     public static final String CONFIG_FILE = "config.properties"; // 全域共用設定檔
-    public static final String APP_Version = "Markdown Extractor v1.2";
+    public static final String APP_Version = "Markdown Extractor v1.3";
+    // 1.3 版本修正 tab4 壓縮圖片 可以是 <img> ，不再只能判斷 ![](../Images/xxx.png) ，代表放大縮小過的圖片可以被識別並壓縮了!
     // 1.2 版本修正 OutLineCreator 對於 # region 、 # endregion 的誤判 ， 改進功能。
-    // 1.1 版本修正 可正式使用，排除99.99問題 (同名稱的檔案不會搞混了)，剩下的應該只有小功能想不想要imporve。ㄆ
+    // 1.1 版本修正 可正式使用，排除99.99問題 (同名稱的檔案不會搞混了)，剩下的應該只有小功能想不想要imporve。
 
 
     public MarkdownExtractorGUI() {
@@ -1127,6 +1128,17 @@ public class MarkdownExtractorGUI extends JFrame {
         // 在 Tab4_imageCompressor 類中新增 mapping（請放在其他 field 宣告區）
         private Map<String, String> GPT_tempMdMapping = new HashMap<>();
 
+        private static final Pattern MARKDOWN_IMAGE_PATTERN =
+                Pattern.compile(MARKDOWN_IMAGE_REGEX, Pattern.CASE_INSENSITIVE);
+        private static final Pattern HTML_IMAGE_PATTERN =
+                Pattern.compile(HTML_IMAGE_REGEX, Pattern.CASE_INSENSITIVE);
+
+        // 更穩健的副檔名偵測與替換（保留 ?query/#hash）
+        private static final Pattern PNG_EXT_PATTERN =
+                Pattern.compile("(?i)\\.png(?=($|[?#]))");
+        private static final Pattern WEBP_EXT_PATTERN =
+                Pattern.compile("(?i)\\.webp(?=($|[?#]))");
+
         // 載入 config.properties 文件
         private void loadConfig() {
             Properties props = new Properties();
@@ -1751,73 +1763,46 @@ public class MarkdownExtractorGUI extends JFrame {
 //                }
                 if (inputFile.getName().endsWith(".md")) {
                     try {
+                        // 讀整份檔
                         String content = new String(Files.readAllBytes(inputFile.toPath()));
-                        Matcher markdownMatcher = MARKDOWN_IMAGE_PATTERN.matcher(content);
-                        StringBuilder updatedContent = new StringBuilder();
-                        int lastIndex = 0;
-                        List<String> eachMarkdownOldImageUrls = new ArrayList<>();
-                        // ===== INSERT START: Only N day(s) 一次性計算 =====
+
+                        // Only N day(s) 計算
                         int n;
                         try {
                             n = Integer.parseInt(onlyDaysField.getText().trim());
                             if (n < 0) n = 0;
                         } catch (NumberFormatException ex) {
-                            n = 0; // 解析失敗就當 0（只今天）
+                            n = 0;
                         }
-                        List<String> recentDates = buildRecentDateStrings(n); // 產生 yyyy-MM-dd / yyyy/MM/dd / yyyyMMdd
-                        // ===== INSERT END =====
-                        while (markdownMatcher.find()) {
-                            updatedContent.append(content, lastIndex, markdownMatcher.start(1));
-                            String imageUrl = markdownMatcher.group(1);
+                        List<String> recentDates = buildRecentDateStrings(n);
+                        boolean onlyTodaySelected = onlyTodayCheckBox.isSelected();
 
-                            // 如果已是 webp，直接保留原內容
-                            if (imageUrl.toLowerCase().endsWith(".webp")) {
-                                updatedContent.append(imageUrl);
-                            }
-                            // 處理 PNG 圖片
-                            else if (imageUrl.toLowerCase().endsWith(".png")) {
-                                File imageFile = new File(inputFile.getParent(), imageUrl);
-                                if (imageFile.exists()) {
+                        // 蒐集本檔案實際有被壓縮成功的 PNG（絕對路徑）
+                        List<String> eachMarkdownOldImageUrls = new ArrayList<>();
 
-                                    // ===== REPLACE START: 用多日期清單比對 =====
-                                    if (onlyTodayCheckBox.isSelected() && urlContainsAnyDate(imageUrl, recentDates)) {
-                                        // 勾選 + 檔名含最近 N 天之一：壓縮
-                                        compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
-                                        String newImageUrl = imageUrl.replace(".png", ".webp");
-                                        updatedContent.append(newImageUrl);
-                                        eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
+                        // 先處理 Markdown 語法 ![](…)
+                        String afterMarkdown = processByPattern(
+                                inputFile, content,
+                                MARKDOWN_IMAGE_PATTERN,
+                                recentDates, onlyTodaySelected,
+                                outputFolder, compressionLevel, quality,
+                                eachMarkdownOldImageUrls
+                        );
 
-                                    } else if (!onlyTodayCheckBox.isSelected()) {
-                                        // 未勾選：全時段皆壓縮（原行為）
-                                        compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
-                                        String newImageUrl = imageUrl.replace(".png", ".webp");
-                                        updatedContent.append(newImageUrl);
-                                        eachMarkdownOldImageUrls.add(imageFile.getAbsolutePath());
+                        // 再用 HTML 語法 <img src="…"> 處理「上一步的結果」
+                        String afterHtml = processByPattern(
+                                inputFile, afterMarkdown,
+                                HTML_IMAGE_PATTERN,
+                                recentDates, onlyTodaySelected,
+                                outputFolder, compressionLevel, quality,
+                                eachMarkdownOldImageUrls
+                        );
 
-                                    } else {
-                                        // 勾選 + 檔名不含最近 N 天：跳過
-                                        updatedContent.append(imageUrl);
-                                    }
-                                    // ===== REPLACE END =====
-
-                                } else {
-                                    System.out.println("圖片不存在：" + imageFile.getAbsolutePath());
-                                    updatedContent.append(imageUrl);
-                                }
-                            } else {
-                                // 其他格式直接保留原內容
-                                updatedContent.append(imageUrl);
-                            }
-                            lastIndex = markdownMatcher.end(1);
-                        }
-                        updatedContent.append(content.substring(lastIndex));
-
-                        // 如果該檔案內沒有任何 PNG 需要處理，就不建立臨時檔，並加入自動剔除的清單
+                        // === 輸出 ===
                         if (eachMarkdownOldImageUrls.isEmpty()) {
                             noNeedCompressMarkDownFiles.add(inputFile.getCanonicalPath());
                         } else {
                             String originalPath = inputFile.getCanonicalPath();
-                            // 使用完整路徑作為 mapping 的 key
                             GPT_tempMdMapping.put(originalPath, originalPath);
                             processedImagesMap.put(originalPath, eachMarkdownOldImageUrls);
 
@@ -1825,16 +1810,15 @@ public class MarkdownExtractorGUI extends JFrame {
                                 outputModel.addElement(originalPath);
                             }
 
-                            // 為了寫入臨時檔案，將完整路徑轉換為安全檔名
                             String safeName = originalPath.replaceAll("[\\\\/:*?\"<>|]", "_");
                             File tempMdFolder = new File(outputFolder, "temp_md_files");
-                            if (!tempMdFolder.exists()) {
-                                tempMdFolder.mkdirs();
-                            }
+                            if (!tempMdFolder.exists()) tempMdFolder.mkdirs();
+
                             File tempMdOutput = new File(tempMdFolder, safeName);
                             try (BufferedWriter writer = Files.newBufferedWriter(tempMdOutput.toPath())) {
-                                writer.write(updatedContent.toString());
+                                writer.write(afterHtml);
                             }
+
                             processedFiles.add(originalPath);
                         }
                     } catch (IOException e) {
@@ -1868,7 +1852,69 @@ public class MarkdownExtractorGUI extends JFrame {
 
 
 
+        /**
+         * 用指定的 Pattern（可為 Markdown 或 HTML）處理一份 Markdown 文字：
+         * - 找到圖片 URL（group(1)）
+         * - 依 OnlyToday + N 天規則決定是否壓縮
+         * - 若壓縮成功則把 .png → .webp（保留 query/hash）
+         * 備註：只替換 URL 子字串，不動其他語法/屬性。
+         */
+        private String processByPattern(
+                File inputFile,
+                String content,
+                Pattern pattern,
+                List<String> recentDates,
+                boolean onlyTodaySelected,
+                String outputFolder,
+                int compressionLevel,
+                int quality,
+                List<String> processedPngAbsPaths // 會把成功壓縮的 PNG 絕對路徑加進來
+        ) {
+            Matcher matcher = pattern.matcher(content);
+            StringBuilder out = new StringBuilder();
+            int last = 0;
 
+            while (matcher.find()) {
+                // 只取 URL 的範圍 (group 1)
+                out.append(content, last, matcher.start(1));
+                String imageUrl = matcher.group(1);
+
+                boolean isWebp = WEBP_EXT_PATTERN.matcher(imageUrl).find();
+                boolean isPng  = PNG_EXT_PATTERN.matcher(imageUrl).find();
+
+                if (isWebp) {
+                    out.append(imageUrl);
+                } else if (isPng) {
+                    File imageFile = new File(inputFile.getParent(), imageUrl).getAbsoluteFile();
+                    if (imageFile.exists()) {
+                        boolean shouldCompress = !onlyTodaySelected
+                                || urlContainsAnyDate(imageUrl, recentDates);
+
+                        if (shouldCompress) {
+                            // 轉 webp
+                            compressImageWebp(imageFile.getAbsolutePath(), outputFolder, compressionLevel, quality);
+
+                            // 安全替換副檔名，保留 ?/# 後綴
+                            String newUrl = PNG_EXT_PATTERN.matcher(imageUrl).replaceFirst(".webp");
+                            out.append(newUrl);
+
+                            processedPngAbsPaths.add(imageFile.getPath());
+                        } else {
+                            out.append(imageUrl);
+                        }
+                    } else {
+                        System.out.println("圖片不存在：" + imageFile.getAbsolutePath());
+                        out.append(imageUrl);
+                    }
+                } else {
+                    out.append(imageUrl); // 非 png/webp → 保留
+                }
+
+                last = matcher.end(1); // 只到 URL 結束
+            }
+            out.append(content.substring(last));
+            return out.toString();
+        }
 
 
         //        private void compressImagePNG(String imagePath, String outputFolder, int compressionLevel) {
