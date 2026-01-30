@@ -240,6 +240,14 @@ git config --global core.quotepath false
 > 請透過 **powershellISE** 去建立 !!
 > 
 > 否則可能跑不了 code。
+> 
+> 執行的時候需要使用 cmd 輸入
+> 
+> powershell -ExecutionPolicy Bypass -File "路徑"
+
+```batch
+powershell -ExecutionPolicy Bypass -File "C:\Users\qw284\Downloads\資工所-20250906T075517Z-1-001\OKstep2renameSpaceProblem_checkall_folderNameConflict.ps1"
+```
 
 ## 1. Step1_change_md_content_relPath.ps1
 
